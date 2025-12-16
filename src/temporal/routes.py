@@ -202,12 +202,20 @@ async def stream_workflow_progress(workflow_id: str):
         last_percent = None
         retries = 0
         max_retries = 300  # 5 minutes with 1-second polls
+        initial_retries = 0
+        max_initial_retries = 10  # Wait up to 10 seconds for workflow to register
 
         while retries < max_retries:
             try:
                 progress = await get_pipeline_progress(workflow_id)
 
                 if progress is None:
+                    # Workflow might still be starting - retry a few times
+                    initial_retries += 1
+                    if initial_retries <= max_initial_retries:
+                        await asyncio.sleep(1)
+                        continue
+                    # After retries, workflow really doesn't exist
                     yield {
                         "event": "error",
                         "data": json.dumps({"error": "Workflow not found"}),
