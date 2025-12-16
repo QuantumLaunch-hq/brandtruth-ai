@@ -43,6 +43,8 @@ services:
     container_name: brandtruth-api
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Database (shared with frontend via Prisma)
+      - DATABASE_URL=postgresql://brandtruth:brandtruth@postgres:5432/brandtruth?schema=public
       # Image sources (fallback chain: Pexels -> Unsplash -> Azure DALL-E)
       - PEXELS_API_KEY=${PEXELS_API_KEY}
       - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY}
@@ -116,6 +118,8 @@ services:
     container_name: brandtruth-worker
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Database (shared with frontend via Prisma)
+      - DATABASE_URL=postgresql://brandtruth:brandtruth@postgres:5432/brandtruth?schema=public
       # Image sources (fallback chain: Pexels -> Unsplash -> Azure DALL-E)
       - PEXELS_API_KEY=${PEXELS_API_KEY}
       - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY}
@@ -132,6 +136,8 @@ services:
       - ./output:/app/output
     depends_on:
       temporal:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - brandtruth-network
