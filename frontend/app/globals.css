@@ -1,0 +1,407 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+   QUANTUM DESIGN SYSTEM
+   Shared across: QuantumLayer, QuantumLaunch, QuantumTest, QL-RF
+   ============================================================================= */
+
+:root {
+  /* Quantum Green - Primary Brand Color */
+  --quantum-50:  #f0fdf4;
+  --quantum-100: #dcfce7;
+  --quantum-200: #bbf7d0;
+  --quantum-300: #86efac;
+  --quantum-400: #4ade80;
+  --quantum-500: #22c55e;
+  --quantum-600: #16a34a;
+  --quantum-700: #15803d;
+  
+  /* Purple - Secondary Accent */
+  --purple-400: #a78bfa;
+  --purple-500: #8b5cf6;
+  --purple-600: #7c3aed;
+  
+  /* Backgrounds */
+  --bg-primary:   #050505;
+  --bg-surface:   #0a0a0a;
+  --bg-elevated:  #111111;
+  --bg-hover:     #1a1a1a;
+  
+  /* Text */
+  --text-primary:   #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-muted:     #52525b;
+  
+  /* Borders */
+  --border-subtle:  #1a1a1a;
+  --border-default: #27272a;
+  
+  /* Glow Effects */
+  --quantum-glow: rgba(34, 197, 94, 0.15);
+  --quantum-glow-strong: rgba(34, 197, 94, 0.25);
+  --purple-glow:  rgba(139, 92, 246, 0.15);
+  
+  /* Semantic */
+  --success: #22c55e;
+  --warning: #eab308;
+  --error:   #ef4444;
+  --info:    #3b82f6;
+}
+
+/* =============================================================================
+   BASE STYLES
+   ============================================================================= */
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  
+  ::selection {
+    background: var(--quantum-glow-strong);
+  }
+}
+
+/* =============================================================================
+   SCROLLBAR - Quantum Style
+   ============================================================================= */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+
+/* =============================================================================
+   QUANTUM COMPONENTS
+   ============================================================================= */
+
+/* Quantum Glow Input */
+.quantum-input {
+  background: var(--quantum-glow);
+  border: 1px solid var(--quantum-500);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 16px;
+  width: 100%;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.quantum-input::placeholder {
+  color: var(--text-muted);
+}
+
+.quantum-input:focus {
+  background: var(--quantum-glow-strong);
+  box-shadow: 0 0 0 3px var(--quantum-glow);
+}
+
+/* Quantum Button - Primary */
+.quantum-btn {
+  background: var(--quantum-500);
+  color: #000000;
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.quantum-btn:hover {
+  background: var(--quantum-600);
+  transform: translateY(-1px);
+}
+
+.quantum-btn:active {
+  transform: translateY(0);
+}
+
+.quantum-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Quantum Button - Secondary */
+.quantum-btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 500;
+  padding: 12px 24px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.quantum-btn-secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+/* Quantum Card */
+.quantum-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.quantum-card-glow {
+  background: var(--bg-surface);
+  border: 1px solid var(--quantum-500);
+  border-radius: 12px;
+  box-shadow: 0 0 30px var(--quantum-glow);
+}
+
+/* Quantum Badge/Pill */
+.quantum-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--quantum-glow);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 9999px;
+  color: var(--quantum-400);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Quantum Progress Bar */
+.quantum-progress {
+  height: 4px;
+  background: var(--border-default);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.quantum-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--quantum-500), var(--quantum-400));
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Quantum Score Badge */
+.quantum-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.quantum-score-high {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--quantum-400);
+}
+
+.quantum-score-medium {
+  background: rgba(234, 179, 8, 0.15);
+  color: #facc15;
+}
+
+.quantum-score-low {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+/* =============================================================================
+   GRADIENT TEXT
+   ============================================================================= */
+
+.gradient-text-quantum {
+  background: linear-gradient(135deg, var(--quantum-400) 0%, var(--quantum-500) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-quantum-purple {
+  background: linear-gradient(135deg, var(--quantum-400) 0%, var(--purple-400) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* =============================================================================
+   ANIMATIONS
+   ============================================================================= */
+
+@keyframes quantum-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 20px var(--quantum-glow);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 40px var(--quantum-glow-strong);
+  }
+}
+
+@keyframes quantum-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-quantum-pulse {
+  animation: quantum-pulse 2s infinite;
+}
+
+.animate-quantum-spin {
+  animation: quantum-spin 1s linear infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-fade-up {
+  animation: fade-up 0.4s ease-out;
+}
+
+/* =============================================================================
+   UTILITY CLASSES
+   ============================================================================= */
+
+.text-quantum { color: var(--quantum-500); }
+.text-quantum-light { color: var(--quantum-400); }
+.bg-quantum { background-color: var(--quantum-500); }
+.bg-quantum-glow { background-color: var(--quantum-glow); }
+.border-quantum { border-color: var(--quantum-500); }
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+
+.bg-surface { background-color: var(--bg-surface); }
+.bg-elevated { background-color: var(--bg-elevated); }
+
+/* =============================================================================
+   RISK BADGES
+   ============================================================================= */
+
+.risk-low {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--quantum-400);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.risk-medium {
+  background: rgba(234, 179, 8, 0.1);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.2);
+}
+
+.risk-high {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* =============================================================================
+   LOADING SKELETON
+   ============================================================================= */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 0%,
+    var(--bg-hover) 50%,
+    var(--bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* =============================================================================
+   STATS DISPLAY
+   ============================================================================= */
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--quantum-glow);
+  border-radius: 50%;
+  color: var(--quantum-400);
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--quantum-400);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: var(--text-muted);
+}

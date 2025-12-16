@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+output/
+jobs/
+brand_profiles/
+*.log
+
+# Keep config files
+!package.json
+!package-lock.json
+!tsconfig.json
+!tailwind.config.js
+!postcss.config.js
+!playwright.config.ts
+!jest.config.js
+!pytest.ini
+
+# Environment
+.env
+.env.local
+!.env.example
+
+# Modal
+.modal/
+
+# Node (for dashboard later)
+node_modules/
+.next/

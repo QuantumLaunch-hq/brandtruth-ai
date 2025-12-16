@@ -1,0 +1,123 @@
+{
+  "brand_name": "Careerfied",
+  "website_url": "https://careerfied.ai/",
+  "tagline": "Your career, rewritten with intelligence",
+  "industry": "HR Tech",
+  "value_propositions": [
+    "Build resumes that get interviews",
+    "AI-powered career tools with ATS optimization and job matching",
+    "End-to-end career support from resume building to interview coaching"
+  ],
+  "target_audience": "Job seekers looking to optimize their resumes, find matching jobs, and improve interview performance",
+  "claims": [
+    {
+      "claim": "Build resumes that get interviews",
+      "claim_type": "benefit",
+      "risk_level": "medium",
+      "source_url": "https://careerfied.ai/",
+      "source_text": "Build resumes that get interviews. Match with jobs that fit. Ace interviews with AI coaching.",
+      "verification_notes": null
+    },
+    {
+      "claim": "Everything you need to land your dream job",
+      "claim_type": "benefit",
+      "risk_level": "high",
+      "source_url": "https://careerfied.ai/",
+      "source_text": "Everything you need to land your dream job.",
+      "verification_notes": null
+    },
+    {
+      "claim": "Ensure your resume passes automated screening systems",
+      "claim_type": "feature",
+      "risk_level": "medium",
+      "source_url": "https://careerfied.ai/",
+      "source_text": "Ensure your resume passes automated screening systems",
+      "verification_notes": null
+    },
+    {
+      "claim": "Get real-time feedback",
+      "claim_type": "feature",
+      "risk_level": "low",
+      "source_url": "https://careerfied.ai/",
+      "source_text": "Practice with AI interviewer and get real-time feedback",
+      "verification_notes": null
+    }
+  ],
+  "social_proof": [],
+  "tone_markers": [
+    {
+      "category": "empowering",
+      "confidence": 0.9,
+      "evidence": "Primary tone from analysis",
+      "source_url": "https://careerfied.ai/"
+    },
+    {
+      "category": "professional",
+      "confidence": 0.6,
+      "evidence": "Secondary tone from analysis",
+      "source_url": "https://careerfied.ai/"
+    }
+  ],
+  "tone_summary": "The brand uses an empowering and confident tone, positioning itself as an intelligent partner that helps users take control of their career advancement.",
+  "key_terms": [
+    "AI-powered",
+    "ATS optimization",
+    "career",
+    "resume builder",
+    "job matching",
+    "interviews",
+    "dream job",
+    "intelligence",
+    "smart"
+  ],
+  "avoided_terms": [
+    "cheap",
+    "basic",
+    "simple",
+    "manual",
+    "traditional"
+  ],
+  "assets": {
+    "logo_url": null,
+    "favicon_url": null,
+    "primary_colors": [],
+    "secondary_colors": [],
+    "product_images": [],
+    "hero_images": [],
+    "screenshots": []
+  },
+  "pages_analyzed": [
+    {
+      "url": "https://careerfied.ai/",
+      "title": "Careerfied - Your career, rewritten with intelligence",
+      "meta_description": "AI-powered resume builder with ATS optimization, job matching, and career growth tools. Create professional resumes, optimize your LinkedIn profile, and land your dream job.",
+      "headings": [
+        "Something Big isComing",
+        "What's Coming",
+        "AI Resume Builder",
+        "Smart Job Matching",
+        "Mock Interviews",
+        "ATS Optimizer"
+      ],
+      "key_paragraphs": [
+        "Your AI-Powered Career Partner",
+        "Build resumes that get interviews. Match with jobs that fit. Ace interviews with AI coaching. Everything you need to land your dream job.",
+        "Create ATS-optimized resumes with AI that writes your bullet points",
+        "Get matched with jobs that fit your skills and career goals",
+        "Practice with AI interviewer and get real-time feedback"
+      ],
+      "ctas": [],
+      "scraped_at": "2025-12-14T21:03:48.326064"
+    }
+  ],
+  "extracted_at": "2025-12-14T21:03:48.326104",
+  "extraction_version": "1.0.0",
+  "confidence_score": 0.6,
+  "extraction_warnings": [
+    "Limited content available - appears to be a coming soon page",
+    "No social proof or testimonials present",
+    "No specific statistics or metrics provided",
+    "No visual assets or color scheme information available",
+    "Some claims are high-risk and may need substantiation for advertising"
+  ]
+}
