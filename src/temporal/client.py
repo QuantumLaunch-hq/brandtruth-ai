@@ -70,6 +70,8 @@ async def start_pipeline(
     num_variants: int = 5,
     platform: str = "meta",
     workflow_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    campaign_name: Optional[str] = None,
 ) -> str:
     """Start a new ad pipeline workflow.
 
@@ -78,6 +80,8 @@ async def start_pipeline(
         num_variants: Number of ad variants to generate
         platform: Target platform (meta, google, tiktok)
         workflow_id: Optional custom workflow ID
+        user_id: Optional user ID for database persistence
+        campaign_name: Optional campaign name for database
 
     Returns:
         Workflow ID for tracking
@@ -91,6 +95,8 @@ async def start_pipeline(
         url=url,
         num_variants=num_variants,
         platform=platform,
+        user_id=user_id,
+        campaign_name=campaign_name,
     )
 
     # Generate workflow ID if not provided
@@ -98,7 +104,7 @@ async def start_pipeline(
         import uuid
         workflow_id = f"pipeline-{uuid.uuid4().hex[:8]}"
 
-    logger.info(f"Starting pipeline workflow: {workflow_id}")
+    logger.info(f"Starting pipeline workflow: {workflow_id} (user: {user_id or 'anonymous'})")
 
     # Start workflow
     handle = await client.start_workflow(

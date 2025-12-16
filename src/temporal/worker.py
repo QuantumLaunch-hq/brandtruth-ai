@@ -38,6 +38,14 @@ from src.temporal.activities.generate import generate_copy_activity
 from src.temporal.activities.match import match_images_activity
 from src.temporal.activities.compose import compose_ads_activity
 from src.temporal.activities.score import predict_performance_activity
+from src.temporal.activities.persist import (
+    create_campaign_activity,
+    update_campaign_status_activity,
+    save_brand_profile_activity,
+    save_variants_activity,
+    complete_campaign_activity,
+    fail_campaign_activity,
+)
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -66,11 +74,19 @@ async def run_worker():
         task_queue=TASK_QUEUE,
         workflows=[AdPipelineWorkflow],
         activities=[
+            # Pipeline activities
             extract_brand_activity,
             generate_copy_activity,
             match_images_activity,
             compose_ads_activity,
             predict_performance_activity,
+            # Database persistence activities
+            create_campaign_activity,
+            update_campaign_status_activity,
+            save_brand_profile_activity,
+            save_variants_activity,
+            complete_campaign_activity,
+            fail_campaign_activity,
         ],
         # Use thread pool for blocking activities
         activity_executor=ThreadPoolExecutor(max_workers=10),
@@ -78,7 +94,7 @@ async def run_worker():
 
     logger.info(f"Starting worker on task queue: {TASK_QUEUE}")
     logger.info("Registered workflows: AdPipelineWorkflow")
-    logger.info("Registered activities: extract, generate, match, compose, score")
+    logger.info("Registered activities: extract, generate, match, compose, score, persist")
 
     # Handle shutdown gracefully
     shutdown_event = asyncio.Event()

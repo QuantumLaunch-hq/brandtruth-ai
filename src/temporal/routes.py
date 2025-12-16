@@ -42,6 +42,8 @@ class StartPipelineRequest(BaseModel):
     url: str = Field(..., description="Website URL to process")
     num_variants: int = Field(5, ge=1, le=10, description="Number of variants to generate")
     platform: str = Field("meta", description="Target platform")
+    user_id: Optional[str] = Field(None, description="User ID for database persistence")
+    campaign_name: Optional[str] = Field(None, description="Campaign name")
 
 
 class StartPipelineResponse(BaseModel):
@@ -49,6 +51,7 @@ class StartPipelineResponse(BaseModel):
     workflow_id: str
     status: str = "started"
     message: str
+    campaign_id: Optional[str] = None
 
 
 class PipelineProgressResponse(BaseModel):
@@ -87,6 +90,7 @@ async def start_workflow_pipeline(request: StartPipelineRequest):
     - Automatically retries on failures
     - Can be queried for progress
     - Supports approval signals
+    - Persists to database if user_id is provided
 
     Returns workflow_id for tracking.
     """
@@ -95,12 +99,15 @@ async def start_workflow_pipeline(request: StartPipelineRequest):
             url=request.url,
             num_variants=request.num_variants,
             platform=request.platform,
+            user_id=request.user_id,
+            campaign_name=request.campaign_name,
         )
 
         return StartPipelineResponse(
             workflow_id=workflow_id,
             status="started",
             message=f"Pipeline started for {request.url}",
+            campaign_id=None,  # Campaign ID is created async by workflow, query later
         )
 
     except Exception as e:
@@ -173,6 +180,7 @@ async def get_workflow_result(workflow_id: str):
         "approved_variant_ids": result.approved_variant_ids,
         "error": result.error,
         "duration_ms": result.duration_ms,
+        "campaign_id": result.campaign_id,
     }
 
 
