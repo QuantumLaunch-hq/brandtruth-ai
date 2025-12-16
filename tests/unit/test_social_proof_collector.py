@@ -115,6 +115,7 @@ class TestSocialProofCollector:
         """Test low trust score with minimal data."""
         request = SocialProofRequest(
             brand_name="Test",
+            brand_url="https://test.com",
             product_description="Test product",
         )
         result = await collector.collect(request)
@@ -125,6 +126,7 @@ class TestSocialProofCollector:
         """Test ad_ready truncates long testimonials."""
         request = SocialProofRequest(
             brand_name="Test",
+            brand_url="https://test.com",
             product_description="Test",
             existing_testimonials=[
                 "This is a very long testimonial that goes on and on about how amazing the product is and how it changed my life and helped me achieve all my goals and dreams in ways I never thought possible."
@@ -140,6 +142,7 @@ class TestSocialProofCollector:
         """Test user count is formatted correctly."""
         request = SocialProofRequest(
             brand_name="Test",
+            brand_url="https://test.com",
             product_description="Test",
             user_count=1500000,  # 1.5M
         )

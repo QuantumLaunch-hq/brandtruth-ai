@@ -17,7 +17,8 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
-class TestElement(str, Enum):
+class SplitElement(str, Enum):
+    """Element types that can be A/B tested."""
     HEADLINE = "headline"
     PRIMARY_TEXT = "primary_text"
     CTA = "cta"
@@ -26,24 +27,42 @@ class TestElement(str, Enum):
     PLACEMENT = "placement"
 
 
-class TestPriority(str, Enum):
+# Backwards compatibility aliases
+TestElement = SplitElement
+ABTestElement = SplitElement
+
+
+class SplitPriority(str, Enum):
+    """Priority levels for A/B tests."""
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
 
 
-class TestPair(BaseModel):
-    element: TestElement
+# Backwards compatibility aliases
+TestPriority = SplitPriority
+ABTestPriority = SplitPriority
+
+
+class SplitPair(BaseModel):
+    """A pair of variants for A/B testing."""
+    element: SplitElement
     variant_a: str
     variant_b: str
     hypothesis: str
-    priority: TestPriority
+    priority: SplitPriority
     expected_lift: str
     test_order: int
 
 
-class ABTestPlan(BaseModel):
-    test_pairs: list[TestPair]
+# Backwards compatibility aliases
+TestPair = SplitPair
+ABTestPair = SplitPair
+
+
+class SplitPlan(BaseModel):
+    """Complete A/B test plan."""
+    test_pairs: list[SplitPair]
     required_sample_size: int
     required_conversions: int
     estimated_days: int
@@ -52,12 +71,17 @@ class ABTestPlan(BaseModel):
     minimum_detectable_effect: float
     recommendations: list[str] = Field(default_factory=list)
     testing_sequence: list[str] = Field(default_factory=list)
-    
+
     def get_summary(self) -> str:
         return f"{len(self.test_pairs)} tests planned | ~{self.estimated_days} days | ${self.daily_budget_needed}/day minimum"
 
 
-class ABTestRequest(BaseModel):
+# Backwards compatibility alias
+ABTestPlan = SplitPlan
+
+
+class SplitRequest(BaseModel):
+    """Request for A/B test planning."""
     variants: list[dict]  # List of ad variants with headline, primary_text, cta, etc.
     baseline_ctr: float = 1.0
     baseline_cvr: float = 2.0
@@ -66,11 +90,17 @@ class ABTestRequest(BaseModel):
     minimum_lift: float = 0.20  # 20% minimum detectable effect
 
 
-class ABTestPlanner:
+# Backwards compatibility alias
+ABTestRequest = SplitRequest
+
+
+class SplitPlanner:
+    """A/B test planner for ad campaigns."""
+
     def __init__(self):
         pass
-    
-    async def plan(self, request: ABTestRequest) -> ABTestPlan:
+
+    async def plan(self, request: SplitRequest) -> SplitPlan:
         logger.info(f"Planning A/B tests for {len(request.variants)} variants")
         
         # Calculate sample size needed
@@ -109,7 +139,7 @@ class ABTestPlanner:
             "5. Scale winning combination",
         ]
         
-        return ABTestPlan(
+        return SplitPlan(
             test_pairs=test_pairs,
             required_sample_size=sample_size,
             required_conversions=required_conversions,
@@ -143,7 +173,7 @@ class ABTestPlanner:
         sample_size = int(numerator / max(denominator, 0.0001))
         return max(sample_size, 100)  # Minimum 100 per variant
     
-    def _generate_test_pairs(self, variants: list[dict]) -> list[TestPair]:
+    def _generate_test_pairs(self, variants: list[dict]) -> list[SplitPair]:
         """Generate prioritized test pairs from variants."""
         pairs = []
         
@@ -159,7 +189,7 @@ class ABTestPlanner:
         
         # Headline tests (highest priority)
         if len(headlines) >= 2:
-            pairs.append(TestPair(
+            pairs.append(SplitPair(
                 element=TestElement.HEADLINE,
                 variant_a=headlines[0][:50] + "..." if len(headlines[0]) > 50 else headlines[0],
                 variant_b=headlines[1][:50] + "..." if len(headlines[1]) > 50 else headlines[1],
@@ -172,7 +202,7 @@ class ABTestPlanner:
         
         # Primary text tests
         if len(texts) >= 2:
-            pairs.append(TestPair(
+            pairs.append(SplitPair(
                 element=TestElement.PRIMARY_TEXT,
                 variant_a=texts[0][:50] + "..." if len(texts[0]) > 50 else texts[0],
                 variant_b=texts[1][:50] + "..." if len(texts[1]) > 50 else texts[1],
@@ -185,7 +215,7 @@ class ABTestPlanner:
         
         # CTA tests
         if len(ctas) >= 2:
-            pairs.append(TestPair(
+            pairs.append(SplitPair(
                 element=TestElement.CTA,
                 variant_a=ctas[0],
                 variant_b=ctas[1] if len(ctas) > 1 else "Get Started",
@@ -197,7 +227,7 @@ class ABTestPlanner:
         
         return pairs
     
-    def _generate_recommendations(self, request: ABTestRequest, days: int, pairs: list[TestPair]) -> list[str]:
+    def _generate_recommendations(self, request: SplitRequest, days: int, pairs: list[SplitPair]) -> list[str]:
         recs = []
         
         if days > 30:
@@ -241,10 +271,16 @@ class ABTestPlanner:
         }
 
 
-_instance: Optional[ABTestPlanner] = None
+# Backwards compatibility alias
+ABTestPlanner = SplitPlanner
 
-def get_ab_test_planner() -> ABTestPlanner:
+
+_instance: Optional[SplitPlanner] = None
+
+
+def get_ab_test_planner() -> SplitPlanner:
+    """Get singleton instance of the A/B test planner."""
     global _instance
     if _instance is None:
-        _instance = ABTestPlanner()
+        _instance = SplitPlanner()
     return _instance

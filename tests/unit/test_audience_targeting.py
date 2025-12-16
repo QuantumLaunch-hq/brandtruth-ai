@@ -94,6 +94,7 @@ class TestAudienceTargeting:
         request = AudienceRequest(
             product_name="Test",
             product_description="Test product",
+            product_type="saas",
             target_persona="Users",
             existing_customers=True,
             website_traffic=False,
@@ -108,6 +109,7 @@ class TestAudienceTargeting:
         request = AudienceRequest(
             product_name="Test",
             product_description="Test product",
+            product_type="saas",
             target_persona="Users",
             existing_customers=False,
             website_traffic=True,
@@ -122,6 +124,7 @@ class TestAudienceTargeting:
         request = AudienceRequest(
             product_name="ResumeBuilder",
             product_description="Resume and job application tool",
+            product_type="career",
             target_persona="Job seekers",
         )
         result = await targeting.suggest(request)

@@ -59,6 +59,10 @@ class ProofRequest(BaseModel):
     notable_customers: list[str] = Field(default_factory=list)
 
 
+# Alias for backwards compatibility with tests
+SocialProofRequest = ProofRequest
+
+
 class SocialProofCollector:
     def __init__(self):
         pass
