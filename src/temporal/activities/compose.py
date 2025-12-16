@@ -8,6 +8,8 @@ This activity wraps the ad_composer module, providing:
 """
 
 from dataclasses import dataclass
+from pathlib import Path
+
 from temporalio import activity
 
 from src.composers.ad_composer import compose_ads
@@ -26,6 +28,7 @@ class AdAsset:
     """Serializable ad asset for Temporal."""
     format: str
     file_path: str
+    file_url: str  # Relative URL path like /output/ad-xyz_1x1.png
     width: int
     height: int
 
@@ -174,15 +177,19 @@ async def compose_ads_activity(
         # Convert to serializable format
         ads = []
         for ad in composition_result.ads:
-            assets = [
-                AdAsset(
+            assets = []
+            for fmt, asset in ad.assets.items():
+                # Extract filename from path to create URL
+                filename = Path(asset.file_path).name
+                file_url = f"/output/{filename}"
+
+                assets.append(AdAsset(
                     format=fmt,
                     file_path=asset.file_path,
+                    file_url=file_url,
                     width=asset.width,
                     height=asset.height,
-                )
-                for fmt, asset in ad.assets.items()
-            ]
+                ))
 
             ads.append(
                 ComposedAdResult(
