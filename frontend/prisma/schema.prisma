@@ -1,0 +1,153 @@
+// BrandTruth AI - Prisma Schema
+// Includes NextAuth.js models + Campaign/Variant models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// NextAuth.js Models
+// =============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  campaigns     Campaign[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// =============================================================================
+// BrandTruth AI Models
+// =============================================================================
+
+model Campaign {
+  id            String         @id @default(cuid())
+  name          String
+  url           String
+  status        CampaignStatus @default(DRAFT)
+
+  // Temporal workflow reference
+  workflowId    String?        @unique
+  workflowRunId String?
+
+  // Pipeline results (stored as JSON)
+  brandProfile  Json?
+  budgetResult  Json?
+  audienceResult Json?
+
+  // Relations
+  variants      Variant[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+
+  // Metadata
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  completedAt   DateTime?
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Variant {
+  id            String        @id @default(cuid())
+
+  // Copy content
+  headline      String
+  primaryText   String        @db.Text
+  cta           String
+  angle         String?
+  emotion       String?
+
+  // Visual content
+  imageUrl      String?
+  composedUrl   String?       // Final composed ad image
+
+  // Scoring
+  score         Int?
+  scoreDetails  Json?         // Detailed breakdown
+
+  // Status
+  status        VariantStatus @default(PENDING)
+
+  // Relations
+  campaign      Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId    String
+
+  // Metadata
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([campaignId])
+  @@index([status])
+}
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+enum CampaignStatus {
+  DRAFT           // User created but not started
+  PROCESSING      // Pipeline running
+  READY           // Pipeline complete, awaiting review
+  APPROVED        // User approved variants
+  PUBLISHED       // Sent to Meta
+  FAILED          // Pipeline failed
+  CANCELLED       // User cancelled
+}
+
+enum VariantStatus {
+  PENDING         // Awaiting review
+  APPROVED        // User approved
+  REJECTED        // User rejected
+}

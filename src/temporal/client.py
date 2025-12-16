@@ -1,0 +1,208 @@
+# src/temporal/client.py
+"""Temporal Client utilities for BrandTruth AI API.
+
+This module provides helper functions for interacting with Temporal workflows
+from the FastAPI server.
+"""
+
+import os
+from typing import Optional
+from contextlib import asynccontextmanager
+
+from temporalio.client import Client, WorkflowHandle
+
+from src.temporal.workflows.ad_pipeline import (
+    AdPipelineWorkflow,
+    PipelineConfig,
+    PipelineProgress,
+    PipelineResult,
+)
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Configuration
+TEMPORAL_HOST = os.getenv("TEMPORAL_HOST", "localhost:7233")
+TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
+TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "brandtruth-pipeline")
+
+# Global client instance
+_client: Optional[Client] = None
+
+
+async def get_client() -> Client:
+    """Get or create a Temporal client."""
+    global _client
+
+    if _client is None:
+        logger.info(f"Connecting to Temporal at {TEMPORAL_HOST}")
+        _client = await Client.connect(
+            TEMPORAL_HOST,
+            namespace=TEMPORAL_NAMESPACE,
+        )
+        logger.info("Temporal client connected")
+
+    return _client
+
+
+async def close_client():
+    """Close the Temporal client."""
+    global _client
+
+    if _client is not None:
+        await _client.close()
+        _client = None
+        logger.info("Temporal client closed")
+
+
+@asynccontextmanager
+async def temporal_client():
+    """Context manager for Temporal client."""
+    client = await get_client()
+    try:
+        yield client
+    finally:
+        pass  # Don't close - reuse connection
+
+
+async def start_pipeline(
+    url: str,
+    num_variants: int = 5,
+    platform: str = "meta",
+    workflow_id: Optional[str] = None,
+) -> str:
+    """Start a new ad pipeline workflow.
+
+    Args:
+        url: Website URL to process
+        num_variants: Number of ad variants to generate
+        platform: Target platform (meta, google, tiktok)
+        workflow_id: Optional custom workflow ID
+
+    Returns:
+        Workflow ID for tracking
+
+    Raises:
+        Exception: If Temporal is unavailable
+    """
+    client = await get_client()
+
+    config = PipelineConfig(
+        url=url,
+        num_variants=num_variants,
+        platform=platform,
+    )
+
+    # Generate workflow ID if not provided
+    if workflow_id is None:
+        import uuid
+        workflow_id = f"pipeline-{uuid.uuid4().hex[:8]}"
+
+    logger.info(f"Starting pipeline workflow: {workflow_id}")
+
+    # Start workflow
+    handle = await client.start_workflow(
+        AdPipelineWorkflow.run,
+        config,
+        id=workflow_id,
+        task_queue=TASK_QUEUE,
+    )
+
+    logger.info(f"Pipeline started: {workflow_id}")
+    return workflow_id
+
+
+async def get_pipeline_progress(workflow_id: str) -> Optional[PipelineProgress]:
+    """Get current progress of a pipeline workflow.
+
+    Args:
+        workflow_id: Workflow ID to query
+
+    Returns:
+        PipelineProgress or None if not found
+    """
+    try:
+        client = await get_client()
+        handle = client.get_workflow_handle(workflow_id)
+        progress = await handle.query(AdPipelineWorkflow.get_progress)
+        return progress
+    except Exception as e:
+        logger.warning(f"Failed to get progress for {workflow_id}: {e}")
+        return None
+
+
+async def get_pipeline_result(workflow_id: str) -> Optional[PipelineResult]:
+    """Get the result of a completed pipeline workflow.
+
+    Args:
+        workflow_id: Workflow ID to get result for
+
+    Returns:
+        PipelineResult or None if not complete/found
+    """
+    try:
+        client = await get_client()
+        handle = client.get_workflow_handle(workflow_id)
+        result = await handle.result()
+        return result
+    except Exception as e:
+        logger.warning(f"Failed to get result for {workflow_id}: {e}")
+        return None
+
+
+async def approve_variants(workflow_id: str, variant_ids: list[str]) -> bool:
+    """Send approval signal to a pipeline workflow.
+
+    Args:
+        workflow_id: Workflow ID to signal
+        variant_ids: List of variant IDs to approve
+
+    Returns:
+        True if signal sent successfully
+    """
+    try:
+        client = await get_client()
+        handle = client.get_workflow_handle(workflow_id)
+        await handle.signal(AdPipelineWorkflow.approve_variants, variant_ids)
+        logger.info(f"Approved variants for {workflow_id}: {variant_ids}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to approve variants for {workflow_id}: {e}")
+        return False
+
+
+async def cancel_pipeline(workflow_id: str) -> bool:
+    """Cancel a running pipeline workflow.
+
+    Args:
+        workflow_id: Workflow ID to cancel
+
+    Returns:
+        True if cancelled successfully
+    """
+    try:
+        client = await get_client()
+        handle = client.get_workflow_handle(workflow_id)
+        await handle.cancel()
+        logger.info(f"Cancelled pipeline: {workflow_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to cancel {workflow_id}: {e}")
+        return False
+
+
+async def is_temporal_available() -> bool:
+    """Check if Temporal server is available.
+
+    Returns:
+        True if Temporal is reachable
+    """
+    try:
+        client = await get_client()
+        # Try a simple operation - list namespaces to verify connection
+        from temporalio.api.workflowservice.v1 import GetSystemInfoRequest
+        await client.workflow_service.get_system_info(GetSystemInfoRequest())
+        return True
+    except Exception as e:
+        logger.warning(f"Temporal not available: {e}")
+        return False

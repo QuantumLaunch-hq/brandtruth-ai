@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import ToolsNav from '../../components/ToolsNav';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface PlatformRec {
   platform: string;
   score: number;
@@ -32,7 +34,7 @@ export default function PlatformsPage() {
   const recommend = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/platforms/recommend', {
+      const res = await fetch(`${API_BASE}/platforms/recommend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ product_type: productType, audience_type: audienceType, monthly_budget: monthlyBudget, product_price: productPrice, is_visual: true }),
@@ -48,7 +50,7 @@ export default function PlatformsPage() {
   const runDemo = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/platforms/demo', { method: 'POST' });
+      const res = await fetch(`${API_BASE}/platforms/demo`, { method: 'POST' });
       const data = await res.json();
       setResult({ ...data, budget_allocation: { meta: 60, linkedin: 25, google: 15 }, recommendations: [
         { platform: 'meta', score: 85, rank: 1, min_budget: 300, cpa_range: '$20-100', strengths: ['Massive reach', 'Visual formats'], best_formats: ['Feed ads', 'Reels'] },

@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import ToolsNav from '../../components/ToolsNav';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface Issue {
   category: string;
   severity: string;
@@ -35,7 +37,7 @@ export default function LandingPage() {
   const analyze = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/landing/analyze', {
+      const res = await fetch(`${API_BASE}/landing/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ landing_page_url: url, ad_headline: headline, ad_primary_text: primaryText, ad_cta: cta }),
@@ -51,7 +53,7 @@ export default function LandingPage() {
   const runDemo = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/landing/demo', { method: 'POST' });
+      const res = await fetch(`${API_BASE}/landing/demo`, { method: 'POST' });
       const data = await res.json();
       setResult({ ...data, url: 'https://careerfied.ai', issues: [], recommendations: [], above_fold_score: 85, cta_score: 80, mobile_score: 85, load_speed_score: 80, message_match_score: data.score || 75, message_match_level: data.match_level || 'good', overall_score: data.score || 75 });
     } catch (err) {

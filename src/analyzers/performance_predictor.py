@@ -191,44 +191,114 @@ class PerformancePredictor:
             return self._default_prediction(str(e))
     
     def _extract_and_clean_json(self, text: str) -> dict | None:
-        """Extract and clean JSON from Claude's response."""
+        """Extract and clean JSON from Claude's response.
+
+        This method handles common LLM JSON output issues:
+        - Markdown code blocks
+        - Trailing commas
+        - Comments
+        - Unescaped special characters
+        - Control characters
+        - Ellipsis patterns
+        """
         import re
-        
+
         # Remove markdown code blocks
         if "```json" in text:
             text = text.split("```json")[1].split("```")[0]
         elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
-        
+            parts = text.split("```")
+            if len(parts) >= 2:
+                text = parts[1]
+
         # Find JSON object
         json_start = text.find("{")
         json_end = text.rfind("}") + 1
-        
+
         if json_start < 0 or json_end <= json_start:
             return None
-        
+
         json_str = text[json_start:json_end]
-        
+
         # Clean common JSON issues from LLM output
-        # Remove trailing commas before ] or }
-        json_str = re.sub(r',\s*([\]}])', r'\1', json_str)
-        
-        # Remove single-line comments (// ...)
-        json_str = re.sub(r'//[^\n]*', '', json_str)
-        
+
+        # Remove single-line comments (// ...) - be careful not to match URLs
+        json_str = re.sub(r'(?<!:)//[^\n"]*(?=\n|$)', '', json_str)
+
         # Remove multi-line comments (/* ... */)
         json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL)
-        
+
+        # Remove ellipsis patterns like "...", "[...]", etc.
+        json_str = re.sub(r'"\.\.\."\s*,?', '', json_str)
+        json_str = re.sub(r'\[\.\.\.?\]', '[]', json_str)
+
+        # Remove trailing commas before ] or }
+        json_str = re.sub(r',\s*([\]}])', r'\1', json_str)
+
+        # Fix common escape issues - unescaped newlines in strings
+        # Match string contents and escape unescaped newlines
+        def fix_string_escapes(match):
+            content = match.group(1)
+            # Escape literal newlines
+            content = content.replace('\n', '\\n')
+            content = content.replace('\r', '\\r')
+            content = content.replace('\t', '\\t')
+            return f'"{content}"'
+
+        # This regex is imperfect but handles most cases
+        json_str = re.sub(r'"([^"\\]*(?:\\.[^"\\]*)*)"', fix_string_escapes, json_str)
+
+        # Remove control characters except those in strings
+        json_str = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', json_str)
+
         # Try to parse
         try:
             return json.loads(json_str)
         except json.JSONDecodeError as e:
-            logger.warning(f"JSON parse warning: {e}")
-            # Try one more cleanup - remove any remaining invalid chars
-            json_str = re.sub(r'[\x00-\x1f]+', ' ', json_str)
+            logger.warning(f"JSON parse warning (attempt 1): {e}")
+
+            # Second attempt: more aggressive cleanup
             try:
-                return json.loads(json_str)
-            except:
+                # Replace single quotes with double quotes (carefully)
+                # Only do this for quote-like patterns, not apostrophes
+                json_str2 = re.sub(r"'(\w+)':", r'"\1":', json_str)
+
+                # Remove any remaining control chars
+                json_str2 = ''.join(c for c in json_str2 if c.isprintable() or c in '\n\r\t')
+
+                # Try to fix truncated JSON by adding missing brackets
+                open_braces = json_str2.count('{') - json_str2.count('}')
+                open_brackets = json_str2.count('[') - json_str2.count(']')
+                json_str2 = json_str2 + ']' * open_brackets + '}' * open_braces
+
+                return json.loads(json_str2)
+            except json.JSONDecodeError as e2:
+                logger.warning(f"JSON parse warning (attempt 2): {e2}")
+
+                # Third attempt: extract just the essential fields
+                try:
+                    # Try to extract key fields even if full JSON fails
+                    overall_match = re.search(r'"overall_score"\s*:\s*(\d+)', json_str)
+                    tier_match = re.search(r'"performance_tier"\s*:\s*"([^"]+)"', json_str)
+                    confidence_match = re.search(r'"confidence"\s*:\s*([\d.]+)', json_str)
+                    ctr_match = re.search(r'"ctr_prediction"\s*:\s*"([^"]+)"', json_str)
+
+                    if overall_match:
+                        # Build minimal valid JSON
+                        return {
+                            "overall_score": int(overall_match.group(1)),
+                            "performance_tier": tier_match.group(1) if tier_match else "average",
+                            "confidence": float(confidence_match.group(1)) if confidence_match else 0.7,
+                            "ctr_prediction": ctr_match.group(1) if ctr_match else "average",
+                            "estimated_ctr_range": [0.8, 1.5],
+                            "conversion_potential": "Medium",
+                            "component_scores": [],
+                            "improvements": [],
+                            "ab_test_suggestions": []
+                        }
+                except Exception as e3:
+                    logger.warning(f"JSON extraction fallback failed: {e3}")
+
                 return None
     
     def _build_analysis_prompt(self, ad: AdToAnalyze) -> str:
@@ -358,22 +428,73 @@ Be specific, actionable, and data-driven in your analysis. Provide at least 3 im
 
     def _parse_prediction(self, data: dict) -> PerformancePrediction:
         """Parse the JSON response into a PerformancePrediction."""
+        # Parse component scores with error handling
+        component_scores = []
+        for cs in data.get("component_scores", []):
+            try:
+                component_scores.append(ComponentScore(**cs))
+            except Exception as e:
+                logger.warning(f"Skipping invalid component score: {e}")
+
+        # Parse improvements with error handling
+        improvements = []
+        for imp in data.get("improvements", []):
+            try:
+                improvements.append(Improvement(**imp))
+            except Exception as e:
+                logger.warning(f"Skipping invalid improvement: {e}")
+
+        # Parse A/B test suggestions with error handling
+        ab_test_suggestions = []
+        for ab in data.get("ab_test_suggestions", []):
+            try:
+                ab_test_suggestions.append(ABTestSuggestion(**ab))
+            except Exception as e:
+                logger.warning(f"Skipping invalid A/B test suggestion: {e}")
+
+        # Ensure we have at least one component score for score.py
+        if not component_scores:
+            overall = data.get("overall_score", 50)
+            component_scores = [
+                ComponentScore(
+                    name="Overall",
+                    score=overall,
+                    weight=1.0,
+                    analysis="Analysis completed with partial data",
+                    strengths=["Ad analyzed successfully"] if overall >= 60 else [],
+                    weaknesses=["Limited analysis data available"] if overall < 60 else [],
+                )
+            ]
+
+        # Parse tier safely
+        try:
+            tier = PerformanceTier(data.get("performance_tier", "average"))
+        except ValueError:
+            tier = PerformanceTier.AVERAGE
+
+        # Parse CTR prediction safely
+        try:
+            ctr = CTRPrediction(data.get("ctr_prediction", "average"))
+        except ValueError:
+            ctr = CTRPrediction.AVERAGE
+
+        # Parse CTR range
+        ctr_range = data.get("estimated_ctr_range", [0.8, 1.2])
+        if isinstance(ctr_range, list) and len(ctr_range) >= 2:
+            ctr_tuple = (float(ctr_range[0]), float(ctr_range[1]))
+        else:
+            ctr_tuple = (0.8, 1.2)
+
         return PerformancePrediction(
             overall_score=data.get("overall_score", 50),
-            performance_tier=PerformanceTier(data.get("performance_tier", "average")),
+            performance_tier=tier,
             confidence=data.get("confidence", 0.7),
-            ctr_prediction=CTRPrediction(data.get("ctr_prediction", "average")),
-            estimated_ctr_range=tuple(data.get("estimated_ctr_range", [0.8, 1.2])),
+            ctr_prediction=ctr,
+            estimated_ctr_range=ctr_tuple,
             conversion_potential=data.get("conversion_potential", "Medium"),
-            component_scores=[
-                ComponentScore(**cs) for cs in data.get("component_scores", [])
-            ],
-            improvements=[
-                Improvement(**imp) for imp in data.get("improvements", [])
-            ],
-            ab_test_suggestions=[
-                ABTestSuggestion(**ab) for ab in data.get("ab_test_suggestions", [])
-            ],
+            component_scores=component_scores,
+            improvements=improvements,
+            ab_test_suggestions=ab_test_suggestions,
         )
     
     def _default_prediction(self, error: str) -> PerformancePrediction:

@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import ToolsNav from '../../components/ToolsNav';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface SimulationResult {
   daily_budget: number;
   monthly_budget: number;
@@ -30,7 +32,7 @@ export default function BudgetPage() {
   const simulate = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/budget/simulate', {
+      const res = await fetch(`${API_BASE}/budget/simulate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,7 +54,7 @@ export default function BudgetPage() {
   const runDemo = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/budget/demo', { method: 'POST' });
+      const res = await fetch(`${API_BASE}/budget/demo`, { method: 'POST' });
       const data = await res.json();
       setResult({ ...data, tier: 'growth', expected_impressions: 50000, expected_clicks: 500, expected_conversions: 12, expected_roas: 1.5, break_even_days: 21, confidence_level: 'Medium', recommendations: ['Start with 1-2 ad sets'], monthly_budget: data.daily_budget * 30 });
     } catch (err) {

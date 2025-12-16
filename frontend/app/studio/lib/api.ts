@@ -43,6 +43,12 @@ export interface PipelineResult {
   copy_variants?: any[];
   images?: any[];
   composed_ads?: any[];
+  image_matches?: Record<string, {
+    image_url: string;
+    relevance_score: number;
+    photographer?: string;
+    photographer_url?: string;
+  }>;
 }
 
 export interface BudgetSimulation {
@@ -165,12 +171,43 @@ class QuantumAPI {
   // PIPELINE - Core extraction and generation
   // ===========================================================================
 
+  /**
+   * @deprecated Use Temporal workflows via useWorkflow hook instead.
+   *
+   * This synchronous pipeline API has been superseded by Temporal workflows
+   * which provide:
+   * - Durable execution (survives crashes/restarts)
+   * - Real-time progress streaming via SSE
+   * - Automatic retries and queue management
+   * - Better observability in Temporal UI
+   *
+   * Migration guide:
+   * ```tsx
+   * // Before (deprecated):
+   * const result = await quantumAPI.runPipeline({ url, num_variants: 5 });
+   *
+   * // After (recommended):
+   * import { useWorkflow } from '@/lib/hooks';
+   * const { startWorkflow, getResult } = useWorkflow();
+   * const workflowId = await startWorkflow({ url, num_variants: 5 });
+   * // Use WorkflowProgress component for SSE progress streaming
+   * // Get final result with: await getResult(workflowId)
+   * ```
+   *
+   * The useWorkflow hook also handles automatic queueing when Temporal
+   * is unavailable, with background health polling and auto-retry.
+   */
   async runPipeline(params: {
     url: string;
     num_variants?: number;
     platform?: string;
     formats?: string[];
   }): Promise<PipelineResult> {
+    console.warn(
+      '[DEPRECATED] quantumAPI.runPipeline() is deprecated. ' +
+      'Use useWorkflow hook with Temporal workflows instead. ' +
+      'See @/lib/hooks/useWorkflow.ts for the new API.'
+    );
     return this.request('/pipeline/run', {
       method: 'POST',
       body: JSON.stringify({

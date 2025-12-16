@@ -51,6 +51,8 @@ class ImageSource(str, Enum):
     """Stock image source."""
     UNSPLASH = "unsplash"
     PEXELS = "pexels"
+    AZURE_DALLE = "azure_dalle"  # Azure OpenAI DALL-E 3
+    OPENAI_DALLE = "openai_dalle"  # Direct OpenAI DALL-E 3
 
 
 class ImageMatch(BaseModel):

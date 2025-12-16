@@ -2,18 +2,19 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-  ArrowLeft, 
-  Eye, 
-  Target, 
-  Clock,
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowLeft,
+  Eye,
+  Target,
   AlertCircle,
-  Loader2,
   Lightbulb,
   ArrowRight,
   MousePointer,
-  BarChart3
+  BarChart3,
+  Sparkles
 } from 'lucide-react';
+import { ScoreOrb, ProgressBar } from '@/components/ui';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -56,17 +57,30 @@ interface AttentionAnalysis {
   heatmap_grid?: number[][];
 }
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 }
+};
+
 export default function AttentionPage() {
   const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?w=600');
   const [headline, setHeadline] = useState('Stop Getting Rejected by ATS');
   const [cta, setCta] = useState('Get Started');
-  
+
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AttentionAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showFlow, setShowFlow] = useState(true);
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
@@ -107,9 +121,8 @@ export default function AttentionPage() {
       const response = await fetch(`${API_BASE}/attention/demo`, {
         method: 'POST',
       });
-      
+
       const data = await response.json();
-      // Convert demo response to full analysis format
       setAnalysis({
         ...data,
         first_focus: {
@@ -138,7 +151,7 @@ export default function AttentionPage() {
   // Draw heatmap overlay on canvas
   useEffect(() => {
     if (!analysis || !canvasRef.current || !imageRef.current) return;
-    
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -147,33 +160,29 @@ export default function AttentionPage() {
     canvas.width = img.width;
     canvas.height = img.height;
 
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw heatmap
     if (showHeatmap) {
       analysis.attention_points.forEach(point => {
         const x = point.x * canvas.width;
         const y = point.y * canvas.height;
         const r = point.radius * canvas.width;
 
-        // Create radial gradient
         const gradient = ctx.createRadialGradient(x, y, 0, x, y, r * 2);
-        
-        // Color based on intensity
         const alpha = point.intensity * 0.6;
+
         if (point.intensity > 0.8) {
-          gradient.addColorStop(0, `rgba(255, 0, 0, ${alpha})`);
-          gradient.addColorStop(0.5, `rgba(255, 100, 0, ${alpha * 0.5})`);
-          gradient.addColorStop(1, 'rgba(255, 200, 0, 0)');
+          gradient.addColorStop(0, `rgba(34, 197, 94, ${alpha})`);
+          gradient.addColorStop(0.5, `rgba(74, 222, 128, ${alpha * 0.5})`);
+          gradient.addColorStop(1, 'rgba(134, 239, 172, 0)');
         } else if (point.intensity > 0.5) {
-          gradient.addColorStop(0, `rgba(255, 165, 0, ${alpha})`);
-          gradient.addColorStop(0.5, `rgba(255, 200, 0, ${alpha * 0.5})`);
-          gradient.addColorStop(1, 'rgba(255, 255, 0, 0)');
+          gradient.addColorStop(0, `rgba(250, 204, 21, ${alpha})`);
+          gradient.addColorStop(0.5, `rgba(253, 224, 71, ${alpha * 0.5})`);
+          gradient.addColorStop(1, 'rgba(254, 240, 138, 0)');
         } else {
-          gradient.addColorStop(0, `rgba(0, 255, 0, ${alpha})`);
-          gradient.addColorStop(0.5, `rgba(100, 255, 100, ${alpha * 0.5})`);
-          gradient.addColorStop(1, 'rgba(200, 255, 200, 0)');
+          gradient.addColorStop(0, `rgba(59, 130, 246, ${alpha})`);
+          gradient.addColorStop(0.5, `rgba(96, 165, 250, ${alpha * 0.5})`);
+          gradient.addColorStop(1, 'rgba(147, 197, 253, 0)');
         }
 
         ctx.fillStyle = gradient;
@@ -183,9 +192,8 @@ export default function AttentionPage() {
       });
     }
 
-    // Draw visual flow
     if (showFlow && analysis.visual_flow.length > 0) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.8)';
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 5]);
 
@@ -193,7 +201,6 @@ export default function AttentionPage() {
         const x = step.x * canvas.width;
         const y = step.y * canvas.height;
 
-        // Draw line to next point
         if (i < analysis.visual_flow.length - 1) {
           const next = analysis.visual_flow[i + 1];
           ctx.beginPath();
@@ -202,14 +209,13 @@ export default function AttentionPage() {
           ctx.stroke();
         }
 
-        // Draw number circle
         ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.9)';
         ctx.beginPath();
         ctx.arc(x, y, 16, 0, Math.PI * 2);
         ctx.fill();
-        
-        ctx.fillStyle = 'white';
+
+        ctx.fillStyle = 'black';
         ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -218,110 +224,120 @@ export default function AttentionPage() {
     }
   }, [analysis, showHeatmap, showFlow]);
 
-  const getAttentionColor = (level: string) => {
-    const colors: Record<string, string> = {
-      very_high: 'bg-red-500',
-      high: 'bg-orange-500',
-      medium: 'bg-yellow-500',
-      low: 'bg-green-500',
-      very_low: 'bg-blue-500',
-    };
-    return colors[level] || 'bg-gray-500';
-  };
-
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-[#050505] text-white">
       {/* Header */}
-      <header className="border-b border-gray-800 px-6 py-4">
+      <motion.header
+        className="border-b border-zinc-800 px-6 py-4 backdrop-blur-xl bg-zinc-900/50 sticky top-0 z-50"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+      >
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-gray-400 hover:text-white">
+            <Link href="/tools" className="text-zinc-400 hover:text-white transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <h1 className="text-xl font-bold flex items-center gap-2">
-              <Eye className="w-5 h-5 text-purple-400" />
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                <Eye className="w-4 h-4 text-white" />
+              </div>
               Attention Heatmap
             </h1>
-            <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded">
-              Slice 10
+            <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded font-mono">
+              PREMIUM
             </span>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       <main className="max-w-6xl mx-auto p-6">
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Left Column - Input & Preview */}
-          <div className="space-y-6">
+          <motion.div
+            className="space-y-6"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+          >
             {/* Image Input */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-              <h2 className="text-lg font-semibold mb-4">Ad Image</h2>
-              
+            <motion.div
+              className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-colors"
+              variants={itemVariants}
+            >
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Target className="w-5 h-5 text-purple-400" />
+                Ad Image
+              </h2>
+
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Image URL</label>
+                  <label className="block text-sm text-zinc-400 mb-2">Image URL</label>
                   <input
                     type="url"
                     value={imageUrl}
                     onChange={(e) => setImageUrl(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 focus:outline-none focus:border-purple-500"
+                    className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-3 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all font-mono text-sm"
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Headline</label>
+                    <label className="block text-sm text-zinc-400 mb-2">Headline</label>
                     <input
                       type="text"
                       value={headline}
                       onChange={(e) => setHeadline(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 focus:outline-none focus:border-purple-500"
+                      className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-3 focus:outline-none focus:border-purple-500 transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">CTA</label>
+                    <label className="block text-sm text-zinc-400 mb-2">CTA</label>
                     <input
                       type="text"
                       value={cta}
                       onChange={(e) => setCta(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 focus:outline-none focus:border-purple-500"
+                      className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-3 focus:outline-none focus:border-purple-500 transition-all"
                     />
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Image Preview with Heatmap */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+            <motion.div
+              className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6"
+              variants={itemVariants}
+            >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Preview</h2>
                 {analysis && (
                   <div className="flex gap-2">
-                    <button
+                    <motion.button
                       onClick={() => setShowHeatmap(!showHeatmap)}
-                      className={`px-3 py-1 text-sm rounded ${showHeatmap ? 'bg-purple-500 text-white' : 'bg-gray-700 text-gray-300'}`}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-all ${showHeatmap ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/25' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                      whileTap={{ scale: 0.95 }}
                     >
                       Heatmap
-                    </button>
-                    <button
+                    </motion.button>
+                    <motion.button
                       onClick={() => setShowFlow(!showFlow)}
-                      className={`px-3 py-1 text-sm rounded ${showFlow ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-300'}`}
+                      className={`px-3 py-1.5 text-sm rounded-lg transition-all ${showFlow ? 'bg-quantum-500 text-black shadow-lg shadow-quantum-500/25' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                      whileTap={{ scale: 0.95 }}
                     >
                       Flow
-                    </button>
+                    </motion.button>
                   </div>
                 )}
               </div>
-              
-              <div className="relative">
+
+              <div className="relative rounded-lg overflow-hidden">
                 <img
                   ref={imageRef}
                   src={imageUrl}
                   alt="Ad preview"
-                  className="w-full rounded-lg"
+                  className="w-full"
                   onLoad={() => {
                     if (analysis) {
-                      // Trigger canvas redraw
                       setShowHeatmap(h => h);
                     }
                   }}
@@ -331,198 +347,282 @@ export default function AttentionPage() {
                   className="absolute top-0 left-0 w-full h-full pointer-events-none"
                 />
               </div>
-            </div>
+            </motion.div>
 
             {/* Actions */}
-            <div className="flex gap-4">
-              <button
+            <motion.div className="flex gap-4" variants={itemVariants}>
+              <motion.button
                 onClick={handleDemo}
                 disabled={loading}
-                className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium disabled:opacity-50 transition"
+                className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-medium disabled:opacity-50 transition-all border border-zinc-700 hover:border-zinc-600"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
               >
                 Run Demo
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={handleAnalyze}
                 disabled={loading || !imageUrl}
-                className="flex-1 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 rounded-lg font-medium disabled:opacity-50 transition flex items-center justify-center gap-2"
+                className="flex-1 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 rounded-xl font-semibold disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <motion.div
+                      className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    />
                     Analyzing...
                   </>
                 ) : (
                   <>
-                    <Eye className="w-5 h-5" />
+                    <Sparkles className="w-5 h-5" />
                     Analyze Attention
                   </>
                 )}
-              </button>
-            </div>
-          </div>
+              </motion.button>
+            </motion.div>
+          </motion.div>
 
           {/* Right Column - Results */}
           <div className="space-y-6">
             {/* Error */}
-            {error && (
-              <div className="bg-red-900/30 border border-red-500/30 rounded-lg p-4">
-                <div className="flex items-center gap-2 text-red-400">
-                  <AlertCircle className="w-5 h-5" />
-                  <p>{error}</p>
-                </div>
-              </div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  className="bg-red-900/30 border border-red-500/30 rounded-xl p-4"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                >
+                  <div className="flex items-center gap-2 text-red-400">
+                    <AlertCircle className="w-5 h-5" />
+                    <p>{error}</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Placeholder */}
             {!analysis && !loading && (
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-12 text-center">
-                <Eye className="w-16 h-16 text-gray-700 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-400 mb-2">No analysis yet</h3>
-                <p className="text-gray-500">Click "Analyze Attention" to see where eyes will focus</p>
-              </div>
+              <motion.div
+                className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-12 text-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Eye className="w-10 h-10 text-zinc-600" />
+                </div>
+                <h3 className="text-lg font-medium text-zinc-400 mb-2">No analysis yet</h3>
+                <p className="text-zinc-500">Click "Analyze Attention" to see where eyes will focus</p>
+              </motion.div>
             )}
 
             {/* Loading */}
             {loading && (
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-12 text-center">
-                <Loader2 className="w-16 h-16 text-purple-500 mx-auto mb-4 animate-spin" />
-                <h3 className="text-lg font-medium text-gray-300 mb-2">Analyzing eye-tracking patterns...</h3>
-                <p className="text-gray-500">Predicting where users will look</p>
-              </div>
+              <motion.div
+                className="bg-zinc-900/80 border border-purple-500/30 rounded-xl p-12 text-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <motion.div
+                  className="w-20 h-20 mx-auto mb-4 relative"
+                  animate={{
+                    boxShadow: ['0 0 20px rgba(168,85,247,0.3)', '0 0 40px rgba(168,85,247,0.5)', '0 0 20px rgba(168,85,247,0.3)']
+                  }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  <motion.div
+                    className="w-full h-full border-4 border-purple-500/30 border-t-purple-500 rounded-full"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                  />
+                  <Eye className="w-8 h-8 text-purple-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                </motion.div>
+                <h3 className="text-lg font-medium text-zinc-300 mb-2">Analyzing eye-tracking patterns...</h3>
+                <p className="text-zinc-500">Predicting where users will look</p>
+              </motion.div>
             )}
 
             {/* Results */}
-            {analysis && !loading && (
-              <>
-                {/* Score Cards */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center">
-                    <div className="text-3xl font-bold text-purple-400">{analysis.overall_score}</div>
-                    <div className="text-sm text-gray-400">Overall</div>
-                  </div>
-                  <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center">
-                    <div className="text-3xl font-bold text-green-400">{analysis.headline_visibility_score}</div>
-                    <div className="text-sm text-gray-400">Headline</div>
-                  </div>
-                  <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center">
-                    <div className="text-3xl font-bold text-blue-400">{analysis.cta_visibility_score}</div>
-                    <div className="text-sm text-gray-400">CTA</div>
-                  </div>
-                </div>
-
-                {/* First Focus */}
-                <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                  <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <MousePointer className="w-5 h-5 text-yellow-400" />
-                    First Focus
-                  </h3>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-white font-medium">{analysis.first_focus.element}</p>
-                      <p className="text-sm text-gray-400">Noticed in ~{analysis.first_focus.time_to_notice_ms}ms</p>
+            <AnimatePresence>
+              {analysis && !loading && (
+                <motion.div
+                  className="space-y-6"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  {/* Score Cards */}
+                  <motion.div className="grid grid-cols-3 gap-4" variants={itemVariants}>
+                    <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 text-center hover:border-purple-500/30 transition-colors">
+                      <ScoreOrb score={analysis.overall_score} size="sm" animate />
+                      <div className="text-sm text-zinc-400 mt-2">Overall</div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-400">Time to CTA</p>
-                      <p className="font-medium text-blue-400">{analysis.time_to_cta_ms}ms</p>
+                    <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 text-center hover:border-quantum-500/30 transition-colors">
+                      <div className="text-3xl font-bold text-quantum-400 font-mono">{analysis.headline_visibility_score}</div>
+                      <div className="text-sm text-zinc-400 mt-1">Headline</div>
                     </div>
-                  </div>
-                </div>
+                    <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 text-center hover:border-blue-500/30 transition-colors">
+                      <div className="text-3xl font-bold text-blue-400 font-mono">{analysis.cta_visibility_score}</div>
+                      <div className="text-sm text-zinc-400 mt-1">CTA</div>
+                    </div>
+                  </motion.div>
 
-                {/* Visual Flow */}
-                <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
-                    <ArrowRight className="w-5 h-5 text-blue-400" />
-                    Visual Flow
-                    <span className="ml-auto text-sm font-normal text-gray-400">
-                      {(analysis.flow_efficiency * 100).toFixed(0)}% efficient
-                    </span>
-                  </h3>
-                  
-                  <div className="space-y-2">
-                    {analysis.visual_flow.map((step, i) => (
-                      <div key={i} className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center font-bold text-sm">
-                          {step.order}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-white">{step.element}</p>
-                        </div>
-                        <div className="text-sm text-gray-400">
-                          {step.dwell_time_ms}ms
-                        </div>
-                        {i < analysis.visual_flow.length - 1 && (
-                          <ArrowRight className="w-4 h-4 text-gray-600" />
-                        )}
+                  {/* First Focus */}
+                  <motion.div
+                    className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-colors"
+                    variants={itemVariants}
+                  >
+                    <h3 className="font-semibold mb-4 flex items-center gap-2">
+                      <MousePointer className="w-5 h-5 text-yellow-400" />
+                      First Focus
+                    </h3>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-medium">{analysis.first_focus.element}</p>
+                        <p className="text-sm text-zinc-400">Noticed in ~<span className="text-quantum-400 font-mono">{analysis.first_focus.time_to_notice_ms}ms</span></p>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <div className="text-right">
+                        <p className="text-sm text-zinc-400">Time to CTA</p>
+                        <p className="font-medium text-blue-400 font-mono">{analysis.time_to_cta_ms}ms</p>
+                      </div>
+                    </div>
+                  </motion.div>
 
-                {/* Attention Distribution */}
-                <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-green-400" />
-                    Attention Distribution
-                  </h3>
-                  
-                  <div className="space-y-3">
-                    {Object.entries(analysis.attention_distribution)
-                      .filter(([_, value]) => value > 0)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([key, value]) => (
-                        <div key={key}>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-300 capitalize">{key.replace('_', ' ')}</span>
-                            <span className="text-gray-400">{value}%</span>
+                  {/* Visual Flow */}
+                  <motion.div
+                    className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6"
+                    variants={itemVariants}
+                  >
+                    <h3 className="font-semibold mb-4 flex items-center gap-2">
+                      <ArrowRight className="w-5 h-5 text-quantum-400" />
+                      Visual Flow
+                      <span className="ml-auto text-sm font-normal text-zinc-400">
+                        <span className="text-quantum-400 font-mono">{(analysis.flow_efficiency * 100).toFixed(0)}%</span> efficient
+                      </span>
+                    </h3>
+
+                    <div className="space-y-2">
+                      {analysis.visual_flow.map((step, i) => (
+                        <motion.div
+                          key={i}
+                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-zinc-800/50 transition-colors"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                        >
+                          <div className="w-8 h-8 bg-quantum-500/20 text-quantum-400 rounded-full flex items-center justify-center font-bold text-sm">
+                            {step.order}
                           </div>
-                          <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
-                              style={{ width: `${value}%` }}
+                          <div className="flex-1">
+                            <p className="text-white">{step.element}</p>
+                          </div>
+                          <div className="text-sm text-zinc-400 font-mono">
+                            {step.dwell_time_ms}ms
+                          </div>
+                          {i < analysis.visual_flow.length - 1 && (
+                            <ArrowRight className="w-4 h-4 text-zinc-600" />
+                          )}
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+
+                  {/* Attention Distribution */}
+                  <motion.div
+                    className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6"
+                    variants={itemVariants}
+                  >
+                    <h3 className="font-semibold mb-4 flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-quantum-400" />
+                      Attention Distribution
+                    </h3>
+
+                    <div className="space-y-4">
+                      {Object.entries(analysis.attention_distribution)
+                        .filter(([_, value]) => value > 0)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([key, value], i) => (
+                          <motion.div
+                            key={key}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                          >
+                            <div className="flex justify-between text-sm mb-2">
+                              <span className="text-zinc-300 capitalize">{key.replace('_', ' ')}</span>
+                              <span className="text-zinc-400 font-mono">{value}%</span>
+                            </div>
+                            <ProgressBar
+                              value={value}
+                              max={100}
+                              variant="default"
+                              animate
+                              showValue={false}
                             />
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
+                          </motion.div>
+                        ))}
+                    </div>
+                  </motion.div>
 
-                {/* Issues & Recommendations */}
-                {analysis.issues.length > 0 && (
-                  <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <AlertCircle className="w-5 h-5 text-yellow-400" />
-                      Issues
-                    </h3>
-                    <ul className="space-y-2">
-                      {analysis.issues.map((issue, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
-                          <span className="text-yellow-400 mt-1">•</span>
-                          {issue}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                  {/* Issues & Recommendations */}
+                  {analysis.issues.length > 0 && (
+                    <motion.div
+                      className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6"
+                      variants={itemVariants}
+                    >
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5 text-yellow-400" />
+                        Issues
+                      </h3>
+                      <ul className="space-y-2">
+                        {analysis.issues.map((issue, i) => (
+                          <motion.li
+                            key={i}
+                            className="flex items-start gap-2 text-sm text-zinc-300"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                          >
+                            <span className="text-yellow-400 mt-0.5">!</span>
+                            {issue}
+                          </motion.li>
+                        ))}
+                      </ul>
+                    </motion.div>
+                  )}
 
-                {analysis.recommendations.length > 0 && (
-                  <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <Lightbulb className="w-5 h-5 text-green-400" />
-                      Recommendations
-                    </h3>
-                    <ul className="space-y-2">
-                      {analysis.recommendations.map((rec, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
-                          <span className="text-green-400 mt-1">✓</span>
-                          {rec}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            )}
+                  {analysis.recommendations.length > 0 && (
+                    <motion.div
+                      className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6"
+                      variants={itemVariants}
+                    >
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Lightbulb className="w-5 h-5 text-quantum-400" />
+                        Recommendations
+                      </h3>
+                      <ul className="space-y-2">
+                        {analysis.recommendations.map((rec, i) => (
+                          <motion.li
+                            key={i}
+                            className="flex items-start gap-2 text-sm text-zinc-300"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                          >
+                            <span className="text-quantum-400 mt-0.5">+</span>
+                            {rec}
+                          </motion.li>
+                        ))}
+                      </ul>
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </main>

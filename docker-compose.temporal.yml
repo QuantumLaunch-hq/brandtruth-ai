@@ -1,0 +1,94 @@
+# docker-compose.temporal.yml
+# Temporal infrastructure for BrandTruth AI durable workflows
+#
+# Usage:
+#   docker-compose -f docker-compose.temporal.yml up -d
+#
+# Services:
+#   - temporal: Temporal server (workflow orchestration)
+#   - temporal-postgresql: Postgres database for Temporal
+#   - temporal-ui: Web UI for monitoring workflows
+#
+# Ports:
+#   - 7234: Temporal gRPC (for workers and clients)
+#   - 8081: Temporal Web UI
+
+version: "3.8"
+
+services:
+  temporal-postgresql:
+    image: postgres:15-alpine
+    container_name: brandtruth-temporal-db
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflict with main Postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    container_name: brandtruth-temporal
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7234:7233"
+    volumes:
+      - ./temporal-config:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: ["CMD-SHELL", "tctl --address localhost:7233 cluster health || exit 0"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  temporal-ui:
+    image: temporalio/ui:2.26.2
+    container_name: brandtruth-temporal-ui
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+  # Optional: Temporal Admin Tools
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.24.2
+    container_name: brandtruth-temporal-admin
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    stdin_open: true
+    tty: true
+    profiles:
+      - tools  # Only start with: docker-compose --profile tools up
+
+volumes:
+  temporal-postgres-data:
+
+networks:
+  default:
+    name: brandtruth-network

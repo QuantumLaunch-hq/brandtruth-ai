@@ -15,7 +15,7 @@ import {
   Clock,
   Zap,
   Volume2,
-  Captions,
+  Subtitles,
   Smartphone,
   Square,
   Monitor,
@@ -405,7 +405,7 @@ Link in bio to try it yourself!`}
                       onChange={(e) => setIncludeCaptions(e.target.checked)}
                       className="w-4 h-4 rounded bg-gray-800 border-gray-700"
                     />
-                    <Captions className="w-4 h-4 text-gray-400" />
+                    <Subtitles className="w-4 h-4 text-gray-400" />
                     <span className="text-sm">Captions</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">

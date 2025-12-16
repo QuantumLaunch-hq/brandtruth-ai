@@ -1,0 +1,209 @@
+# docker-compose.yml
+# BrandTruth AI - Full Stack Development Environment
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose up -d --build      # Rebuild and start
+#   docker-compose logs -f            # View logs
+#   docker-compose down               # Stop all services
+#
+# Services:
+#   - api: FastAPI backend (port 8010)
+#   - frontend: Next.js frontend (port 3010)
+#   - postgres: PostgreSQL database (port 5432)
+#   - temporal: Temporal server (port 7233)
+#   - temporal-ui: Temporal Web UI (port 8081)
+
+services:
+  # PostgreSQL Database for app data
+  postgres:
+    image: postgres:15-alpine
+    container_name: brandtruth-postgres
+    environment:
+      POSTGRES_USER: brandtruth
+      POSTGRES_PASSWORD: brandtruth
+      POSTGRES_DB: brandtruth
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5442:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brandtruth"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - brandtruth-network
+
+  # Backend API (FastAPI)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: brandtruth-api
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Image sources (fallback chain: Pexels -> Unsplash -> Azure DALL-E)
+      - PEXELS_API_KEY=${PEXELS_API_KEY}
+      - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY}
+      # Azure OpenAI for DALL-E 3 (uses Azure credits)
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_DALLE_DEPLOYMENT=${AZURE_DALLE_DEPLOYMENT:-dall-e-3}
+      # Temporal config
+      - TEMPORAL_HOST=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=brandtruth-pipeline
+    volumes:
+      - ./src:/app/src:ro
+      - ./api_server.py:/app/api_server.py:ro
+      - ./output:/app/output
+      - ./jobs:/app/jobs
+    ports:
+      - "8010:8000"
+    depends_on:
+      temporal:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      - brandtruth-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: brandtruth-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8010
+      - DATABASE_URL=postgresql://brandtruth:brandtruth@postgres:5432/brandtruth?schema=public
+      - NEXTAUTH_URL=http://localhost:3010
+      - NEXTAUTH_SECRET=your-secret-key-change-in-production
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3010:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - brandtruth-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Temporal Worker (executes workflows)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: brandtruth-worker
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Image sources (fallback chain: Pexels -> Unsplash -> Azure DALL-E)
+      - PEXELS_API_KEY=${PEXELS_API_KEY}
+      - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY}
+      # Azure OpenAI for DALL-E 3 (uses Azure credits)
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_DALLE_DEPLOYMENT=${AZURE_DALLE_DEPLOYMENT:-dall-e-3}
+      # Temporal config
+      - TEMPORAL_HOST=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=brandtruth-pipeline
+    volumes:
+      - ./src:/app/src:ro
+      - ./output:/app/output
+    depends_on:
+      temporal:
+        condition: service_healthy
+    networks:
+      - brandtruth-network
+    restart: unless-stopped
+    command: ["python", "-m", "src.temporal.worker"]
+
+  # Temporal PostgreSQL (separate from app DB)
+  temporal-postgresql:
+    image: postgres:15-alpine
+    container_name: brandtruth-temporal-db
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - brandtruth-network
+
+  # Temporal Server (upgraded to latest stable v1.29.1 - Dec 2025)
+  temporal:
+    image: temporalio/auto-setup:1.29.1
+    container_name: brandtruth-temporal
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7243:7233"
+    volumes:
+      - ./temporal-config:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: ["CMD-SHELL", "tctl --address temporal:7233 cluster health || tctl --address $$(hostname -i):7233 cluster health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - brandtruth-network
+    restart: unless-stopped
+
+  # Temporal Web UI (upgraded to match server v1.29.1)
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    container_name: brandtruth-temporal-ui
+    depends_on:
+      temporal:
+        condition: service_started
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3010,http://localhost:3000
+    ports:
+      - "8091:8080"
+    networks:
+      - brandtruth-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  temporal-postgres-data:
+
+networks:
+  brandtruth-network:
+    name: brandtruth-network

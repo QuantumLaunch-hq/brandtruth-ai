@@ -1,5 +1,6 @@
 # Core dependencies
 anthropic>=0.40.0
+openai>=1.58.0  # Azure OpenAI DALL-E support
 pydantic>=2.10.0
 httpx>=0.28.0
 beautifulsoup4>=4.12.0
@@ -11,6 +12,10 @@ rich>=13.9.0
 # API Framework
 fastapi>=0.115.0
 uvicorn>=0.32.0
+sse-starlette>=2.1.0
+
+# Durable Workflow Engine
+temporalio>=1.7.0
 
 # Testing dependencies
 pytest>=8.3.0
@@ -22,8 +27,8 @@ httpx>=0.28.0
 # Linting
 ruff>=0.8.0
 
-# Optional: Browser automation (for future features)
-# playwright>=1.49.0
+# Browser automation
+playwright>=1.49.0
 
 # Optional: Modal deployment
 # modal>=0.67.0

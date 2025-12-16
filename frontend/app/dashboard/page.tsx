@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
@@ -30,6 +30,10 @@ import {
   Target,
   TrendingUp,
 } from 'lucide-react'
+import { useWorkflow, type WorkflowProgress as WorkflowProgressType } from '@/lib/hooks'
+import { WorkflowProgress } from '@/components/WorkflowProgress'
+import { QueueStatus } from '@/components/QueueStatus'
+import { usePipelineQueueStore } from '@/stores/pipeline-queue'
 
 // =============================================================================
 // TYPES
@@ -158,6 +162,11 @@ export default function DashboardPage() {
   const [numVariants, setNumVariants] = useState(5)
   const [selectedVariant, setSelectedVariant] = useState<AdVariant | null>(null)
   const [apiAvailable, setApiAvailable] = useState(false)
+  const [workflowId, setWorkflowId] = useState<string | null>(null)
+
+  // Workflow hook
+  const { startWorkflow, getResult } = useWorkflow()
+  const { isTemporalAvailable } = usePipelineQueueStore()
 
   // Check API availability on mount and when switching modes
   useEffect(() => {
@@ -286,121 +295,115 @@ export default function DashboardPage() {
     },
   ]
 
+  // Handle Temporal workflow completion
+  const handleWorkflowComplete = useCallback(async (progress: WorkflowProgressType) => {
+    if (!workflowId) return
+
+    try {
+      const result = await getResult(workflowId)
+      if (!result) {
+        setError('Failed to get workflow result')
+        setStep('idle')
+        return
+      }
+
+      // Transform workflow result to component state
+      if (result.brand_profile) {
+        setBrandProfile({
+          brand_name: result.brand_profile.brand_name,
+          tagline: result.brand_profile.tagline,
+          value_propositions: result.brand_profile.value_propositions,
+          claims: result.brand_profile.claims.map((c) => ({
+            claim: c.claim,
+            source: c.source,
+            risk_level: c.risk_level as 'LOW' | 'MEDIUM' | 'HIGH',
+          })),
+          confidence_score: result.brand_profile.confidence_score,
+        })
+      } else {
+        setBrandProfile(mockBrandProfile)
+      }
+
+      // Transform variants
+      if (result.copy_variants?.variants) {
+        setVariants(result.copy_variants.variants.map((v, i) => ({
+          id: v.id,
+          headline: v.headline,
+          primary_text: v.primary_text,
+          cta: v.cta,
+          angle: v.angle,
+          emotion: v.emotion,
+          score: result.performance_scores?.scores.find((s) => s.variant_id === v.id)?.score || v.quality_score,
+          image_url: result.image_matches?.[v.id]?.image_url || mockVariants[i % mockVariants.length].image_url,
+          status: 'pending' as const,
+        })))
+      } else {
+        setVariants(mockVariants.slice(0, numVariants))
+      }
+
+      setStep('complete')
+      setWorkflowId(null)
+    } catch (err) {
+      console.error('Error handling workflow completion:', err)
+      setError(err instanceof Error ? err.message : 'Failed to process workflow result')
+      setStep('idle')
+    }
+  }, [workflowId, getResult, numVariants])
+
+  // Handle Temporal workflow error
+  const handleWorkflowError = useCallback((errorMsg: string) => {
+    setError(`Workflow error: ${errorMsg}`)
+    setStep('idle')
+    setWorkflowId(null)
+  }, [])
+
   // Handlers
   const handleGenerate = async () => {
     if (!url) return
-    
+
     setError(null)
     setStep('extracting')
-    
+
     if (useMockData) {
       // Simulate pipeline steps with mock data
       await new Promise(r => setTimeout(r, 1500))
       setBrandProfile(mockBrandProfile)
-      
+
       setStep('generating')
       await new Promise(r => setTimeout(r, 1500))
-      
+
       setStep('matching')
       await new Promise(r => setTimeout(r, 1500))
-      
+
       setStep('composing')
       await new Promise(r => setTimeout(r, 1000))
-      
+
       setVariants(mockVariants.slice(0, numVariants))
       setStep('complete')
     } else {
-      // Call real API
+      // Use Temporal workflow (hook handles queueing if unavailable)
       try {
-        setStep('extracting')
-        
-        // Add timeout to prevent infinite hang
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 300000) // 5 min timeout
-        
-        const response = await fetch(`${API_BASE}/pipeline/run`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url,
-            num_variants: numVariants,
-            platform: 'meta',
-            formats: ['square'],
-          }),
-          signal: controller.signal,
-        })
-        
-        clearTimeout(timeoutId)
-        
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({ detail: 'Server error' }))
-          throw new Error(err.detail || `HTTP ${response.status}`)
+        const id = await startWorkflow({ url, num_variants: numVariants })
+
+        if (id) {
+          // Check if this is a queue ID (starts with 'queue-')
+          if (id.startsWith('queue-')) {
+            // Request was queued - show appropriate message
+            setError('Temporal service unavailable. Your request has been queued and will start automatically when the service is available.')
+            setStep('idle')
+            return
+          }
+
+          // Real workflow ID - start tracking progress via SSE
+          setWorkflowId(id)
+          // WorkflowProgress component will handle SSE streaming and call handleWorkflowComplete
+          return
         }
-        
-        const data = await response.json()
-        
-        // Check for pipeline error
-        if (data.error) {
-          throw new Error(data.error)
-        }
-        
-        // Simulate progress through stages
-        setStep('generating')
-        await new Promise(r => setTimeout(r, 500))
-        setStep('matching')
-        await new Promise(r => setTimeout(r, 500))
-        setStep('composing')
-        await new Promise(r => setTimeout(r, 500))
-        
-        // Transform API response - brand profile
-        if (data.brand_profile) {
-          setBrandProfile({
-            brand_name: data.brand_profile.brand_name || 'Your Brand',
-            tagline: data.brand_profile.tagline || '',
-            value_propositions: data.brand_profile.value_propositions || [],
-            claims: (data.brand_profile.claims || []).map((c: any) => ({
-              claim: c.claim || c,
-              source: c.source || c.source_text || 'Website',
-              risk_level: c.risk_level || 'LOW',
-            })),
-            confidence_score: data.brand_profile.confidence_score || 0.85,
-          })
-        } else {
-          // Use mock if no brand profile returned
-          setBrandProfile(mockBrandProfile)
-        }
-        
-        // Transform API response - variants
-        if (data.copy_variants && data.copy_variants.length > 0) {
-          // Get image URLs from image_matches if available
-          const imageMatches = data.image_matches || {}
-          
-          setVariants(data.copy_variants.map((v: any, i: number) => {
-            const matchedImage = imageMatches[v.id]?.image_url
-            return {
-              id: v.id || `v${i + 1}`,
-              headline: v.headline,
-              primary_text: v.primary_text,
-              cta: v.cta,
-              angle: v.angle || 'benefit',
-              emotion: v.emotion || 'confidence',
-              score: v.quality_score ? Math.round(v.quality_score * 100) : Math.floor(Math.random() * 15) + 80,
-              image_url: matchedImage || mockVariants[i % mockVariants.length].image_url,
-              status: 'pending' as const,
-            }
-          }))
-        } else {
-          // Fallback to mock variants if none returned
-          setVariants(mockVariants.slice(0, numVariants))
-        }
-        
-        setStep('complete')
-        
+
+        throw new Error('Failed to start workflow - no workflow ID returned')
       } catch (err: any) {
         console.error('Pipeline error:', err)
-        const errorMessage = err.name === 'AbortError' 
-          ? 'Request timed out. Make sure the backend is running and try again.'
-          : (err.message || 'Failed to generate ads. Make sure the backend is running.')
+        const errorMessage = err.message || 'Failed to generate ads. Make sure the backend is running.'
         setError(errorMessage)
         setStep('idle')
       }
@@ -443,6 +446,7 @@ export default function DashboardPage() {
     setVariants([])
     setError(null)
     setSelectedVariant(null)
+    setWorkflowId(null)
   }
 
   const handleApproveAll = () => {
@@ -479,7 +483,13 @@ export default function DashboardPage() {
             
             <div className="flex items-center gap-4">
               <APIStatusBadge isDemo={useMockData} />
-              
+              {/* Temporal status */}
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                <span className={`w-1.5 h-1.5 rounded-full ${isTemporalAvailable ? 'bg-purple-400' : 'bg-yellow-400 animate-pulse'}`} />
+                Temporal {isTemporalAvailable ? 'Ready' : 'Offline'}
+              </div>
+              <QueueStatus compact />
+
               {step === 'complete' && (
                 <div className="flex items-center gap-3">
                   <button
@@ -506,6 +516,9 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Queue Status Banner */}
+        <QueueStatus className="mb-4" />
+
         {/* URL Input Section */}
         {step === 'idle' && (
           <div className="max-w-2xl mx-auto">
@@ -630,55 +643,79 @@ export default function DashboardPage() {
         {/* Processing Steps */}
         {(step !== 'idle' && step !== 'complete') && (
           <div className="max-w-2xl mx-auto">
-            <div className="bg-dark-surface rounded-2xl border border-quantum-500/30 p-8 shadow-quantum">
-              <div className="text-center mb-8">
-                <Loader2 className="w-12 h-12 text-quantum-400 animate-spin mx-auto mb-4" />
-                <h2 className="text-xl font-semibold text-white mb-2">
-                  {step === 'extracting' && 'Quantum Extractor running...'}
-                  {step === 'generating' && 'Generating ad variants...'}
-                  {step === 'matching' && 'Quantum Vision matching images...'}
-                  {step === 'composing' && 'Composing final ads...'}
-                </h2>
-                <p className="text-zinc-400">This usually takes about 30-60 seconds</p>
+            {workflowId ? (
+              // Temporal workflow - use SSE-based progress
+              <div className="grid lg:grid-cols-2 gap-8 items-start">
+                <div>
+                  <h2 className="text-2xl font-bold text-white mb-4">Temporal Workflow Processing</h2>
+                  <p className="text-zinc-400 mb-4">
+                    Your ad pipeline is running as a durable Temporal workflow. Progress is streamed in real-time.
+                  </p>
+                  <p className="text-sm text-zinc-500">
+                    Processing: <span className="text-quantum-400 font-mono">{url}</span>
+                  </p>
+                  <p className="text-xs text-zinc-600 font-mono mt-2">
+                    Workflow: {workflowId}
+                  </p>
+                </div>
+                <WorkflowProgress
+                  workflowId={workflowId}
+                  onComplete={handleWorkflowComplete}
+                  onError={handleWorkflowError}
+                />
               </div>
-              
-              {/* Progress Steps */}
-              <div className="space-y-4">
-                {[
-                  { key: 'extracting', label: 'Quantum Extractor', icon: Globe },
-                  { key: 'generating', label: 'Copy Generation', icon: FileText },
-                  { key: 'matching', label: 'Quantum Vision', icon: ImageIcon },
-                  { key: 'composing', label: 'Ad Composition', icon: Sparkles },
-                ].map((s) => {
-                  const steps: PipelineStep[] = ['extracting', 'generating', 'matching', 'composing']
-                  const currentIndex = steps.indexOf(step)
-                  const thisIndex = steps.indexOf(s.key as PipelineStep)
-                  const isComplete = thisIndex < currentIndex
-                  const isCurrent = thisIndex === currentIndex
-                  
-                  return (
-                    <div key={s.key} className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        isComplete ? 'bg-quantum-500/20' : isCurrent ? 'bg-quantum-500/10' : 'bg-dark-hover'
-                      }`}>
-                        {isComplete ? (
-                          <CheckCircle className="w-5 h-5 text-quantum-400" />
-                        ) : isCurrent ? (
-                          <Loader2 className="w-5 h-5 text-quantum-400 animate-spin" />
-                        ) : (
-                          <s.icon className="w-5 h-5 text-zinc-600" />
-                        )}
+            ) : (
+              // Demo mode - use static progress
+              <div className="bg-dark-surface rounded-2xl border border-quantum-500/30 p-8 shadow-quantum">
+                <div className="text-center mb-8">
+                  <Loader2 className="w-12 h-12 text-quantum-400 animate-spin mx-auto mb-4" />
+                  <h2 className="text-xl font-semibold text-white mb-2">
+                    {step === 'extracting' && 'Quantum Extractor running...'}
+                    {step === 'generating' && 'Generating ad variants...'}
+                    {step === 'matching' && 'Quantum Vision matching images...'}
+                    {step === 'composing' && 'Composing final ads...'}
+                  </h2>
+                  <p className="text-zinc-400">This usually takes about 30-60 seconds</p>
+                </div>
+
+                {/* Progress Steps */}
+                <div className="space-y-4">
+                  {[
+                    { key: 'extracting', label: 'Quantum Extractor', icon: Globe },
+                    { key: 'generating', label: 'Copy Generation', icon: FileText },
+                    { key: 'matching', label: 'Quantum Vision', icon: ImageIcon },
+                    { key: 'composing', label: 'Ad Composition', icon: Sparkles },
+                  ].map((s) => {
+                    const steps: PipelineStep[] = ['extracting', 'generating', 'matching', 'composing']
+                    const currentIndex = steps.indexOf(step)
+                    const thisIndex = steps.indexOf(s.key as PipelineStep)
+                    const isComplete = thisIndex < currentIndex
+                    const isCurrent = thisIndex === currentIndex
+
+                    return (
+                      <div key={s.key} className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          isComplete ? 'bg-quantum-500/20' : isCurrent ? 'bg-quantum-500/10' : 'bg-dark-hover'
+                        }`}>
+                          {isComplete ? (
+                            <CheckCircle className="w-5 h-5 text-quantum-400" />
+                          ) : isCurrent ? (
+                            <Loader2 className="w-5 h-5 text-quantum-400 animate-spin" />
+                          ) : (
+                            <s.icon className="w-5 h-5 text-zinc-600" />
+                          )}
+                        </div>
+                        <span className={`font-medium ${
+                          isComplete ? 'text-quantum-400' : isCurrent ? 'text-white' : 'text-zinc-600'
+                        }`}>
+                          {s.label}
+                        </span>
                       </div>
-                      <span className={`font-medium ${
-                        isComplete ? 'text-quantum-400' : isCurrent ? 'text-white' : 'text-zinc-600'
-                      }`}>
-                        {s.label}
-                      </span>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

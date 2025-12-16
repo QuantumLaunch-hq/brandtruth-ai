@@ -95,6 +95,14 @@ from src.extractors.social_proof_collector import (
     get_social_proof_collector, ProofRequest,
 )
 
+# Optional Temporal workflow routes (graceful fallback if Temporal not available)
+try:
+    from src.temporal.routes import router as temporal_router
+    TEMPORAL_AVAILABLE = True
+except ImportError:
+    TEMPORAL_AVAILABLE = False
+    temporal_router = None
+
 app = FastAPI(
     title="BrandTruth AI API",
     description="AI-powered ad generation with video creation",
@@ -106,10 +114,13 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:3001",
+        "http://localhost:3010",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
+        "http://127.0.0.1:3010",
         "http://192.168.8.145:3000",
         "http://192.168.8.145:3001",
+        "http://192.168.8.145:3010",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -119,6 +130,10 @@ app.add_middleware(
 output_dir = Path("./output")
 output_dir.mkdir(exist_ok=True)
 app.mount("/output", StaticFiles(directory=str(output_dir)), name="output")
+
+# Include Temporal workflow routes if available
+if TEMPORAL_AVAILABLE and temporal_router:
+    app.include_router(temporal_router, prefix="/workflow", tags=["Temporal Workflows"])
 
 orchestrator = PipelineOrchestrator(jobs_dir="./jobs")
 sentiment_monitors: dict[str, SentimentMonitor] = {}
@@ -233,7 +248,11 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "1.0.0"}
+    return {
+        "status": "healthy",
+        "version": "1.0.0",
+        "temporal_available": TEMPORAL_AVAILABLE,
+    }
 
 
 # =============================================================================

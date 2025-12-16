@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Zap,
   Globe,
@@ -32,8 +33,19 @@ import {
   AlertCircle,
   Video,
   Wand2,
+  Save,
 } from 'lucide-react';
 import { quantumAPI } from './lib/api';
+import { useDraftStore, draftToCampaign } from '@/stores/draft';
+import { useCampaignStore, createNewCampaign, generateCampaignId } from '@/stores/campaign';
+import { useApiStatusStore } from '@/stores/api-status';
+import { useStoreHydration } from '@/components/providers/StoreProvider';
+import { ApiStatusBadge } from '@/components/ApiStatusBanner';
+import { DraftIndicator } from '@/components/DraftIndicator';
+import { WorkflowProgress } from '@/components/WorkflowProgress';
+import { QueueStatus } from '@/components/QueueStatus';
+import { useWorkflow, useWorkflowProgress, type WorkflowProgress as WorkflowProgressType } from '@/lib/hooks';
+import { usePipelineQueueStore } from '@/stores/pipeline-queue';
 
 // =============================================================================
 // TYPES
@@ -475,310 +487,321 @@ function AdCard({
   );
 }
 
-function APIStatusBadge({ available }: { available: boolean }) {
-  return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-      available 
-        ? 'bg-quantum-500/10 text-quantum-400 border border-quantum-500/30'
-        : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30'
-    }`}>
-      <span className={`w-2 h-2 rounded-full ${available ? 'bg-quantum-400' : 'bg-yellow-400'}`} />
-      {available ? 'API Connected' : 'Demo Mode'}
-    </div>
-  );
-}
-
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 export default function QuantumLaunchStudio() {
-  const [state, setState] = useState<CampaignState>({
-    step: 'input',
-    url: '',
-    brand: null,
-    variants: [],
-    budget: null,
-    audience: null,
-    error: null,
-    processingStage: '',
-    processingProgress: 0,
-    apiAvailable: false,
-    publishResult: null,
-  });
-  
+  const router = useRouter();
+  const isHydrated = useStoreHydration();
+
+  // Zustand stores
+  const draftStore = useDraftStore();
+  const campaignStore = useCampaignStore();
+  const apiStatus = useApiStatusStore();
+
+  // Temporal workflow hooks
+  const { startWorkflow, getResult, approveVariants: approveWorkflowVariants, checkHealth: checkTemporalHealth, isLoading: workflowLoading } = useWorkflow();
+
+  // Local UI state (not persisted)
+  const [step, setStep] = useState<'input' | 'processing' | 'results' | 'publishing' | 'live'>('input');
+  const [brand, setBrand] = useState<BrandProfile | null>(null);
+  const [variants, setVariants] = useState<AdVariant[]>([]);
+  const [budget, setBudget] = useState<BudgetRecommendation | null>(null);
+  const [audience, setAudience] = useState<AudienceRecommendation | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [publishResult, setPublishResult] = useState<any>(null);
   const [expandedSections, setExpandedSections] = useState({
     claims: false,
     budget: false,
     audience: false,
   });
 
-  // Check API availability on mount
-  useEffect(() => {
-    const checkAPI = async () => {
-      try {
-        await quantumAPI.checkHealth();
-        setState(s => ({ ...s, apiAvailable: true }));
-      } catch {
-        setState(s => ({ ...s, apiAvailable: false }));
-      }
-    };
-    checkAPI();
-  }, []);
+  // Temporal workflow state
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
 
-  // Process URL
-  const processUrl = async () => {
-    if (!state.url) return;
-    
-    setState(s => ({ ...s, step: 'processing', error: null, processingProgress: 0 }));
-    
-    try {
-      if (state.apiAvailable) {
-        // Real API calls
-        setState(s => ({ ...s, processingStage: 'extracting', processingProgress: 10 }));
-        
-        const pipeline = await quantumAPI.runPipeline({ 
-          url: state.url,
-          num_variants: 5,
-        });
-        
-        setState(s => ({ ...s, processingStage: 'analyzing', processingProgress: 30 }));
-        
-        // Get budget recommendation
-        const budget = await quantumAPI.simulateBudget({
-          industry: 'saas',
-          goal: 'leads',
-          product_price: 99,
-        });
-        
-        setState(s => ({ ...s, processingStage: 'generating', processingProgress: 50 }));
-        
-        // Get audience suggestions
-        const audience = await quantumAPI.suggestAudiences({
-          product_name: pipeline.brand_profile?.brand_name || 'Product',
-          product_description: pipeline.brand_profile?.tagline || '',
-          target_persona: 'Professionals seeking solutions',
-        });
-        
-        setState(s => ({ ...s, processingStage: 'scoring', processingProgress: 70 }));
-        
-        // Score each variant
-        const scoredVariants: AdVariant[] = [];
-        if (pipeline.copy_variants) {
-          for (const variant of pipeline.copy_variants) {
-            try {
-              const prediction = await quantumAPI.predictPerformance({
-                headline: variant.headline,
-                primary_text: variant.primary_text,
-                cta: variant.cta,
-              });
-              scoredVariants.push({
-                id: `v${scoredVariants.length + 1}`,
-                headline: variant.headline,
-                primary_text: variant.primary_text,
-                cta: variant.cta,
-                angle: variant.angle || 'benefit',
-                emotion: variant.emotion || 'confidence',
-                score: prediction.score,
-                image_url: variant.image_url || mockVariants[scoredVariants.length % mockVariants.length].image_url,
-                status: 'pending',
-              });
-            } catch {
-              // Use variant without score
-              scoredVariants.push({
-                id: `v${scoredVariants.length + 1}`,
-                headline: variant.headline,
-                primary_text: variant.primary_text,
-                cta: variant.cta,
-                angle: variant.angle || 'benefit',
-                emotion: variant.emotion || 'confidence',
-                score: Math.floor(Math.random() * 15) + 80, // Random 80-95
-                image_url: variant.image_url || mockVariants[scoredVariants.length % mockVariants.length].image_url,
-                status: 'pending',
-              });
-            }
-          }
-        }
-        
-        setState(s => ({ ...s, processingStage: 'optimizing', processingProgress: 90 }));
-        await new Promise(r => setTimeout(r, 500));
-        
-        // Transform data
-        const brandProfile: BrandProfile = {
-          brand_name: pipeline.brand_profile?.brand_name || 'Your Brand',
-          tagline: pipeline.brand_profile?.tagline || '',
-          value_propositions: pipeline.brand_profile?.value_propositions || [],
-          claims: (pipeline.brand_profile?.claims || []).map((c: any) => ({
-            claim: c.claim || c,
-            source: c.source || 'Website',
-            risk_level: c.risk_level || 'LOW',
-          })),
-          confidence_score: pipeline.brand_profile?.confidence_score || 0.85,
-        };
-        
-        const budgetRec: BudgetRecommendation = {
-          daily_budget: budget.daily_budget,
-          monthly_budget: budget.monthly_budget,
-          expected_clicks: budget.expected_clicks,
-          expected_conversions: budget.expected_conversions,
-          expected_cpa: budget.expected_cpa,
-          expected_roas: budget.expected_roas,
-        };
-        
-        const audienceRec: AudienceRecommendation = {
-          name: audience.primary_audiences?.[0]?.name || 'Target Audience',
-          description: audience.summary || 'Your ideal customers',
-          age_min: 25,
-          age_max: 45,
-          countries: ['US', 'UK', 'CA'],
-          interests: audience.primary_audiences?.[0]?.targeting_tips || [],
-        };
-        
-        setState(s => ({
-          ...s,
-          step: 'results',
-          brand: brandProfile,
-          variants: scoredVariants.length > 0 ? scoredVariants : mockVariants,
-          budget: budgetRec,
-          audience: audienceRec,
-          processingProgress: 100,
-        }));
-        
-      } else {
-        // Demo mode with mock data
-        const stages = [
-          { stage: 'extracting', delay: 1500 },
-          { stage: 'analyzing', delay: 1200 },
-          { stage: 'generating', delay: 1500 },
-          { stage: 'scoring', delay: 1000 },
-          { stage: 'optimizing', delay: 800 },
-        ];
-        
-        let progress = 0;
-        for (const { stage, delay } of stages) {
-          setState(s => ({ ...s, processingStage: stage }));
-          await new Promise(r => setTimeout(r, delay));
-          progress += 20;
-          setState(s => ({ ...s, processingProgress: progress }));
-        }
-        
-        setState(s => ({
-          ...s,
-          step: 'results',
-          brand: mockBrand,
-          variants: mockVariants,
-          budget: mockBudget,
-          audience: mockAudience,
-          processingProgress: 100,
-        }));
+  // Queue store for showing queue status
+  const { isTemporalAvailable } = usePipelineQueueStore();
+
+  // Sync from draft store on hydration
+  useEffect(() => {
+    if (isHydrated && draftStore.processingStage === 'complete' && draftStore.variants.length > 0) {
+      // Restore from draft if we have completed results
+      setStep('results');
+      if (draftStore.brandProfile) {
+        setBrand(draftStore.brandProfile as unknown as BrandProfile);
       }
-    } catch (error) {
-      console.error('Processing error:', error);
-      setState(s => ({
-        ...s,
-        step: 'input',
-        error: error instanceof Error ? error.message : 'Failed to process URL',
-      }));
+      setVariants(
+        draftStore.variants.map((v) => ({
+          id: v.id,
+          headline: v.headline,
+          primary_text: v.primaryText,
+          cta: v.cta,
+          angle: v.angle || 'benefit',
+          emotion: v.emotion || 'confidence',
+          score: v.score || 85,
+          image_url: v.imageUrl,
+          status:
+            v.status === 'APPROVED' ? 'approved' : v.status === 'REJECTED' ? 'rejected' : 'pending',
+        }))
+      );
+      if (draftStore.budgetResult) {
+        setBudget(draftStore.budgetResult as unknown as BudgetRecommendation);
+      }
+      if (draftStore.audienceResult) {
+        setAudience(draftStore.audienceResult as unknown as AudienceRecommendation);
+      }
+    }
+  }, [isHydrated, draftStore.processingStage, draftStore.variants.length]);
+
+  // Save campaign to store
+  const saveCampaign = useCallback(() => {
+    if (variants.length === 0 || !draftStore.url) return;
+
+    const newCampaign = createNewCampaign(draftStore.url, draftStore.campaignName);
+    newCampaign.status = variants.some((v) => v.status === 'approved') ? 'APPROVED' : 'READY';
+    newCampaign.brandProfile = brand ? { ...brand } : undefined;
+    newCampaign.budgetResult = budget ? { ...budget } : undefined;
+    newCampaign.audienceResult = audience ? { ...audience } : undefined;
+    newCampaign.variants = variants.map((v) => ({
+      id: v.id,
+      headline: v.headline,
+      primaryText: v.primary_text,
+      cta: v.cta,
+      angle: v.angle,
+      emotion: v.emotion,
+      score: v.score,
+      imageUrl: v.image_url,
+      status: v.status === 'approved' ? 'APPROVED' : v.status === 'rejected' ? 'REJECTED' : 'PENDING',
+    }));
+
+    campaignStore.addCampaign(newCampaign);
+    campaignStore.setCurrentCampaign(newCampaign.id);
+
+    // Clear draft after saving
+    draftStore.reset();
+
+    // Navigate to campaigns page
+    router.push('/campaigns');
+  }, [variants, brand, budget, audience, draftStore, campaignStore, router]);
+
+  // API availability from store
+  const apiAvailable = apiStatus.status === 'connected';
+
+  // Handle Temporal workflow completion
+  const handleWorkflowComplete = useCallback(async (progress: WorkflowProgressType) => {
+    if (!workflowId) return;
+
+    try {
+      // Fetch the complete result from the workflow
+      const result = await getResult(workflowId);
+      if (!result) {
+        setError('Failed to get workflow result');
+        setStep('input');
+        return;
+      }
+
+      // Transform workflow result to component state
+      const brandProfile: BrandProfile = result.brand_profile ? {
+        brand_name: result.brand_profile.brand_name,
+        tagline: result.brand_profile.tagline,
+        value_propositions: result.brand_profile.value_propositions,
+        claims: result.brand_profile.claims.map((c) => ({
+          claim: c.claim,
+          source: c.source,
+          risk_level: c.risk_level as 'LOW' | 'MEDIUM' | 'HIGH',
+        })),
+        confidence_score: result.brand_profile.confidence_score,
+      } : mockBrand;
+
+      const scoredVariants: AdVariant[] = result.copy_variants?.variants.map((v, i) => ({
+        id: v.id,
+        headline: v.headline,
+        primary_text: v.primary_text,
+        cta: v.cta,
+        angle: v.angle,
+        emotion: v.emotion,
+        score: result.performance_scores?.scores.find((s) => s.variant_id === v.id)?.score || v.quality_score,
+        image_url: result.image_matches?.[v.id]?.image_url ||
+          mockVariants[i % mockVariants.length].image_url,
+        status: 'pending' as const,
+      })) || mockVariants;
+
+      // Update state
+      setStep('results');
+      setBrand(brandProfile);
+      setVariants(scoredVariants);
+      setBudget(mockBudget); // Budget/audience from separate APIs for now
+      setAudience(mockAudience);
+
+      // Save to draft store for persistence
+      draftStore.setBrandProfile({ ...brandProfile });
+      draftStore.setVariants(
+        scoredVariants.map((v) => ({
+          id: v.id,
+          headline: v.headline,
+          primaryText: v.primary_text,
+          cta: v.cta,
+          angle: v.angle,
+          emotion: v.emotion,
+          score: v.score,
+          imageUrl: v.image_url,
+          status: 'PENDING' as const,
+        }))
+      );
+      draftStore.setBudgetResult({ ...mockBudget });
+      draftStore.setAudienceResult({ ...mockAudience });
+      draftStore.completeProcessing();
+
+      // Clear workflow ID after completion
+      setWorkflowId(null);
+    } catch (err) {
+      console.error('Error handling workflow completion:', err);
+      setError(err instanceof Error ? err.message : 'Failed to process workflow result');
+      setStep('input');
+    }
+  }, [workflowId, getResult, draftStore]);
+
+  // Handle Temporal workflow error
+  const handleWorkflowError = useCallback((errorMsg: string) => {
+    setError(`Workflow error: ${errorMsg}`);
+    setStep('input');
+    setWorkflowId(null);
+    draftStore.setError(errorMsg);
+  }, [draftStore]);
+
+  // Process URL (Temporal workflow only)
+  const processUrl = async () => {
+    const url = draftStore.url;
+    if (!url) return;
+
+    setStep('processing');
+    setError(null);
+    draftStore.startProcessing();
+
+    try {
+      // Always use Temporal workflow - hook handles queueing if unavailable
+      const id = await startWorkflow({ url, num_variants: 5 });
+
+      if (id) {
+        // Check if this is a queue ID (starts with 'queue-')
+        if (id.startsWith('queue-')) {
+          // Request was queued - show appropriate message
+          setError('Temporal service unavailable. Your request has been queued and will start automatically when the service is available.');
+          setStep('input');
+          draftStore.setError('Request queued for later processing');
+          return;
+        }
+
+        // Real workflow ID - start tracking progress
+        setWorkflowId(id);
+        draftStore.updateProgress('extracting', 5, 'Starting Temporal workflow...');
+        // WorkflowProgress component will handle SSE streaming and call handleWorkflowComplete
+        return;
+      }
+
+      // No ID returned - something went wrong
+      throw new Error('Failed to start workflow - no workflow ID returned');
+    } catch (err) {
+      console.error('Processing error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to process URL';
+      setStep('input');
+      setError(errorMessage);
+      draftStore.setError(errorMessage);
     }
   };
 
   // Variant actions
   const approveVariant = (id: string) => {
-    setState(s => ({
-      ...s,
-      variants: s.variants.map(v => v.id === id ? { ...v, status: 'approved' } : v),
-    }));
+    setVariants((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, status: 'approved' as const } : v))
+    );
+    draftStore.updateVariantStatus(id, 'APPROVED');
   };
 
   const rejectVariant = (id: string) => {
-    setState(s => ({
-      ...s,
-      variants: s.variants.map(v => v.id === id ? { ...v, status: 'rejected' } : v),
-    }));
+    setVariants((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, status: 'rejected' as const } : v))
+    );
+    draftStore.updateVariantStatus(id, 'REJECTED');
   };
 
   const resetVariant = (id: string) => {
-    setState(s => ({
-      ...s,
-      variants: s.variants.map(v => v.id === id ? { ...v, status: 'pending' } : v),
-    }));
+    setVariants((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, status: 'pending' as const } : v))
+    );
+    draftStore.updateVariantStatus(id, 'PENDING');
   };
 
   const approveAll = () => {
-    setState(s => ({
-      ...s,
-      variants: s.variants.map(v => ({ ...v, status: 'approved' })),
-    }));
+    setVariants((prev) => prev.map((v) => ({ ...v, status: 'approved' as const })));
+    variants.forEach((v) => draftStore.updateVariantStatus(v.id, 'APPROVED'));
   };
 
   // Publish
   const publish = async () => {
-    setState(s => ({ ...s, step: 'publishing', error: null }));
-    
+    setStep('publishing');
+    setError(null);
+
     try {
-      const approvedAds = state.variants.filter(v => v.status === 'approved');
-      
-      if (state.apiAvailable && approvedAds.length > 0) {
+      const approvedAds = variants.filter((v) => v.status === 'approved');
+
+      if (apiAvailable && approvedAds.length > 0) {
         // Publish first approved ad
         const firstAd = approvedAds[0];
         const result = await quantumAPI.publishToMeta({
           headline: firstAd.headline,
           primary_text: firstAd.primary_text,
           cta: firstAd.cta,
-          link_url: state.url,
-          campaign_name: `${state.brand?.brand_name || 'QuantumLaunch'} Campaign`,
-          daily_budget: state.budget?.daily_budget || 30,
+          link_url: draftStore.url,
+          campaign_name: `${brand?.brand_name || 'QuantumLaunch'} Campaign`,
+          daily_budget: budget?.daily_budget || 30,
           start_paused: true,
         });
-        
-        setState(s => ({ ...s, step: 'live', publishResult: result }));
+
+        setStep('live');
+        setPublishResult(result);
       } else {
         // Demo mode
-        await new Promise(r => setTimeout(r, 2000));
-        setState(s => ({ 
-          ...s, 
-          step: 'live',
-          publishResult: { success: true, demo: true },
-        }));
+        await new Promise((r) => setTimeout(r, 2000));
+        setStep('live');
+        setPublishResult({ success: true, demo: true });
       }
-    } catch (error) {
-      console.error('Publish error:', error);
-      setState(s => ({
-        ...s,
-        step: 'results',
-        error: error instanceof Error ? error.message : 'Failed to publish',
-      }));
+    } catch (err) {
+      console.error('Publish error:', err);
+      setStep('results');
+      setError(err instanceof Error ? err.message : 'Failed to publish');
     }
   };
 
   // Generate video for a variant
   const generateVideo = async (variant: AdVariant) => {
-    if (!state.apiAvailable || !state.brand) {
+    if (!apiAvailable || !brand) {
       alert('Video generation requires API connection. Start the backend server.');
       return;
     }
-    
+
     try {
       const result = await quantumAPI.generateVideo({
-        brand_name: state.brand.brand_name,
-        product_description: state.brand.tagline,
-        target_audience: state.audience?.name || 'Target audience',
-        key_benefits: state.brand.value_propositions,
+        brand_name: brand.brand_name,
+        product_description: brand.tagline,
+        target_audience: audience?.name || 'Target audience',
+        key_benefits: brand.value_propositions,
         cta: variant.cta,
       });
       alert(`Video generated! ID: ${result.video_id}\nHook: ${result.hook}`);
-    } catch (error) {
+    } catch (err) {
       alert('Video generation failed. Check console for details.');
-      console.error(error);
+      console.error(err);
     }
   };
 
   // Improve variant
   const improveVariant = async (variant: AdVariant) => {
-    if (!state.apiAvailable) {
+    if (!apiAvailable) {
       alert('Improvement suggestions require API connection.');
       return;
     }
-    
+
     try {
       const result = await quantumAPI.analyzeForIteration({
         headline: variant.headline,
@@ -789,30 +812,26 @@ export default function QuantumLaunchStudio() {
         target_cpa: 30,
       });
       alert(`Improvement suggestions:\n${result.summary}`);
-    } catch (error) {
+    } catch (err) {
       alert('Failed to get improvement suggestions.');
-      console.error(error);
+      console.error(err);
     }
   };
 
   // Start over
   const startOver = () => {
-    setState({
-      step: 'input',
-      url: '',
-      brand: null,
-      variants: [],
-      budget: null,
-      audience: null,
-      error: null,
-      processingStage: '',
-      processingProgress: 0,
-      apiAvailable: state.apiAvailable,
-      publishResult: null,
-    });
+    setStep('input');
+    setBrand(null);
+    setVariants([]);
+    setBudget(null);
+    setAudience(null);
+    setError(null);
+    setPublishResult(null);
+    setWorkflowId(null);
+    draftStore.reset();
   };
 
-  const approvedCount = state.variants.filter(v => v.status === 'approved').length;
+  const approvedCount = variants.filter((v) => v.status === 'approved').length;
 
   return (
     <div className="min-h-screen bg-dark-primary">
@@ -820,32 +839,48 @@ export default function QuantumLaunchStudio() {
       <header className="border-b border-dark-hover px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <QuantumLogo />
-          
+
           <div className="flex items-center gap-4">
-            <APIStatusBadge available={state.apiAvailable} />
-            {state.step === 'results' && (
-              <button onClick={startOver} className="text-sm text-zinc-400 hover:text-white transition">
+            <ApiStatusBadge />
+            {/* Temporal/Queue status badge */}
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30">
+              <span className={`w-1.5 h-1.5 rounded-full ${isTemporalAvailable ? 'bg-purple-400' : 'bg-yellow-400 animate-pulse'}`} />
+              Temporal {isTemporalAvailable ? 'Ready' : 'Offline'}
+            </div>
+            <QueueStatus compact />
+            <DraftIndicator showSaveButton={step === 'results'} onSave={saveCampaign} />
+            {step === 'results' && (
+              <button
+                onClick={startOver}
+                className="text-sm text-zinc-400 hover:text-white transition"
+              >
                 Start Over
               </button>
             )}
             <Link href="/tools" className="text-sm text-zinc-400 hover:text-white transition">
               All Tools
             </Link>
-            <Link href="/dashboard" className="text-sm text-zinc-400 hover:text-white transition">
-              Dashboard
+            <Link
+              href="/campaigns"
+              className="text-sm text-zinc-400 hover:text-white transition"
+            >
+              My Campaigns
             </Link>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-12">
+        {/* Queue Status Banner */}
+        <QueueStatus className="mb-4" />
+
         {/* Error Banner */}
-        {state.error && (
+        {error && (
           <div className="mb-8 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-            <p className="text-red-400">{state.error}</p>
-            <button 
-              onClick={() => setState(s => ({ ...s, error: null }))}
+            <p className="text-red-400">{error}</p>
+            <button
+              onClick={() => setError(null)}
               className="ml-auto text-red-400 hover:text-red-300"
             >
               <XCircle className="w-5 h-5" />
@@ -854,7 +889,7 @@ export default function QuantumLaunchStudio() {
         )}
 
         {/* STEP 1: INPUT */}
-        {state.step === 'input' && (
+        {step === 'input' && (
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-12">
               <QuantumPill>Quantum Multi-Model Ad Intelligence</QuantumPill>
@@ -876,35 +911,35 @@ export default function QuantumLaunchStudio() {
                 <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-quantum-400" />
                 <input
                   type="url"
-                  value={state.url}
-                  onChange={e => setState(s => ({ ...s, url: e.target.value }))}
+                  value={draftStore.url}
+                  onChange={(e) => draftStore.setUrl(e.target.value)}
                   placeholder="Enter your website URL"
                   className="quantum-input pl-12"
-                  onKeyDown={e => e.key === 'Enter' && processUrl()}
+                  onKeyDown={(e) => e.key === 'Enter' && processUrl()}
                 />
               </div>
               <p className="mt-2 text-sm text-zinc-500 text-center">
                 ✨ Try with:{' '}
-                <button 
-                  onClick={() => setState(s => ({ ...s, url: 'https://careerfied.ai' }))}
+                <button
+                  onClick={() => draftStore.setUrl('https://careerfied.ai')}
                   className="text-quantum-400 hover:underline"
                 >
                   careerfied.ai
                 </button>
                 {' '}or{' '}
-                <button 
-                  onClick={() => setState(s => ({ ...s, url: 'https://stripe.com' }))}
+                <button
+                  onClick={() => draftStore.setUrl('https://stripe.com')}
                   className="text-quantum-400 hover:underline"
                 >
                   stripe.com
                 </button>
               </p>
             </div>
-            
+
             <div className="flex items-center justify-center gap-4">
               <button
                 onClick={processUrl}
-                disabled={!state.url}
+                disabled={!draftStore.url}
                 className="quantum-btn text-lg px-8 py-4"
               >
                 <Zap className="w-5 h-5" />
@@ -947,57 +982,73 @@ export default function QuantumLaunchStudio() {
         )}
 
         {/* STEP 2: PROCESSING */}
-        {state.step === 'processing' && (
+        {step === 'processing' && (
           <div className="max-w-4xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
                 <h2 className="text-3xl font-bold text-white mb-4">
-                  Quantum Intelligence is analyzing your website
+                  {workflowId ? 'Temporal Workflow Processing' : 'Quantum Intelligence is analyzing your website'}
                 </h2>
                 <p className="text-zinc-400 mb-8">
-                  Our multi-model system is extracting claims, generating compliant ad copy, 
-                  matching visuals, and optimizing for performance.
+                  {workflowId
+                    ? 'Your ad pipeline is running as a durable Temporal workflow. Progress is streamed in real-time.'
+                    : 'Our multi-model system is extracting claims, generating compliant ad copy, matching visuals, and optimizing for performance.'
+                  }
                 </p>
-                
+
                 <div className="text-sm text-zinc-500">
                   <p className="mb-2">Currently processing:</p>
-                  <p className="text-quantum-400 font-mono break-all">{state.url}</p>
+                  <p className="text-quantum-400 font-mono break-all">{draftStore.url}</p>
+                  {workflowId && (
+                    <p className="mt-2 text-zinc-600 font-mono text-xs">
+                      Workflow: {workflowId}
+                    </p>
+                  )}
                 </div>
               </div>
-              
-              <LivePreviewCard 
-                stage={state.processingStage} 
-                progress={state.processingProgress} 
-              />
+
+              {/* Show WorkflowProgress for Temporal, LivePreviewCard for sync */}
+              {workflowId ? (
+                <WorkflowProgress
+                  workflowId={workflowId}
+                  onComplete={handleWorkflowComplete}
+                  onError={handleWorkflowError}
+                />
+              ) : (
+                <LivePreviewCard
+                  stage={draftStore.processingStage}
+                  progress={draftStore.processingProgress}
+                />
+              )}
             </div>
           </div>
         )}
 
         {/* STEP 3: RESULTS */}
-        {state.step === 'results' && state.brand && (
+        {step === 'results' && brand && (
           <div className="space-y-8">
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-quantum-500/20 mb-4">
                 <CheckCircle className="w-8 h-8 text-quantum-400" />
               </div>
               <h2 className="text-3xl font-bold text-white">
-                {state.brand.brand_name} Campaign Ready
+                {brand.brand_name} Campaign Ready
               </h2>
               <p className="mt-2 text-zinc-400">
-                Quantum Intelligence analyzed your site and created {state.variants.length} ads
+                Quantum Intelligence analyzed your site and created {variants.length} ads
               </p>
             </div>
 
             {/* Claims Section */}
             <div className="bg-dark-surface border border-dark-hover rounded-xl overflow-hidden">
               <button
-                onClick={() => setExpandedSections(s => ({ ...s, claims: !s.claims }))}
+                onClick={() => setExpandedSections((s) => ({ ...s, claims: !s.claims }))}
                 className="w-full px-6 py-4 flex items-center justify-between hover:bg-dark-hover/50 transition"
               >
                 <div className="flex items-center gap-3">
                   <Shield className="w-5 h-5 text-quantum-400" />
                   <span className="font-medium text-white">
-                    Extracted Claims ({state.brand.claims.length})
+                    Extracted Claims ({brand.claims.length})
                   </span>
                   <span className="text-sm text-zinc-500">— Compliance verified</span>
                 </div>
@@ -1007,11 +1058,14 @@ export default function QuantumLaunchStudio() {
                   <ChevronDown className="w-5 h-5 text-zinc-400" />
                 )}
               </button>
-              
+
               {expandedSections.claims && (
                 <div className="px-6 pb-4 space-y-2">
-                  {state.brand.claims.map((claim, i) => (
-                    <div key={i} className="flex items-center justify-between py-2 px-3 bg-dark-hover rounded-lg">
+                  {brand.claims.map((claim, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between py-2 px-3 bg-dark-hover rounded-lg"
+                    >
                       <div>
                         <p className="text-white">{claim.claim}</p>
                         <p className="text-sm text-zinc-500">Source: {claim.source}</p>
@@ -1029,7 +1083,7 @@ export default function QuantumLaunchStudio() {
                 <h3 className="text-lg font-semibold text-white">Generated Ads</h3>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-zinc-400">
-                    {approvedCount} of {state.variants.length} approved
+                    {approvedCount} of {variants.length} approved
                   </span>
                   <button
                     onClick={approveAll}
@@ -1039,9 +1093,9 @@ export default function QuantumLaunchStudio() {
                   </button>
                 </div>
               </div>
-              
+
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {state.variants.map(variant => (
+                {variants.map((variant) => (
                   <AdCard
                     key={variant.id}
                     variant={variant}
@@ -1060,7 +1114,7 @@ export default function QuantumLaunchStudio() {
               {/* Budget */}
               <div className="bg-dark-surface border border-dark-hover rounded-xl overflow-hidden">
                 <button
-                  onClick={() => setExpandedSections(s => ({ ...s, budget: !s.budget }))}
+                  onClick={() => setExpandedSections((s) => ({ ...s, budget: !s.budget }))}
                   className="w-full px-6 py-4 flex items-center justify-between hover:bg-dark-hover/50 transition"
                 >
                   <div className="flex items-center gap-3">
@@ -1068,7 +1122,9 @@ export default function QuantumLaunchStudio() {
                     <span className="font-medium text-white">Budget Recommendation</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-quantum-400 font-mono font-bold">${state.budget?.daily_budget}/day</span>
+                    <span className="text-quantum-400 font-mono font-bold">
+                      ${budget?.daily_budget}/day
+                    </span>
                     {expandedSections.budget ? (
                       <ChevronUp className="w-5 h-5 text-zinc-400" />
                     ) : (
@@ -1076,24 +1132,26 @@ export default function QuantumLaunchStudio() {
                     )}
                   </div>
                 </button>
-                
-                {expandedSections.budget && state.budget && (
+
+                {expandedSections.budget && budget && (
                   <div className="px-6 pb-4 grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-zinc-500">Monthly Budget</span>
-                      <p className="text-white font-medium">${state.budget.monthly_budget}</p>
+                      <p className="text-white font-medium">${budget.monthly_budget}</p>
                     </div>
                     <div>
                       <span className="text-zinc-500">Expected Clicks</span>
-                      <p className="text-white font-medium">{state.budget.expected_clicks.toLocaleString()}</p>
+                      <p className="text-white font-medium">
+                        {budget.expected_clicks.toLocaleString()}
+                      </p>
                     </div>
                     <div>
                       <span className="text-zinc-500">Expected CPA</span>
-                      <p className="text-white font-medium">${state.budget.expected_cpa.toFixed(2)}</p>
+                      <p className="text-white font-medium">${budget.expected_cpa.toFixed(2)}</p>
                     </div>
                     <div>
                       <span className="text-zinc-500">Expected ROAS</span>
-                      <p className="text-quantum-400 font-medium">{state.budget.expected_roas}x</p>
+                      <p className="text-quantum-400 font-medium">{budget.expected_roas}x</p>
                     </div>
                   </div>
                 )}
@@ -1102,7 +1160,7 @@ export default function QuantumLaunchStudio() {
               {/* Audience */}
               <div className="bg-dark-surface border border-dark-hover rounded-xl overflow-hidden">
                 <button
-                  onClick={() => setExpandedSections(s => ({ ...s, audience: !s.audience }))}
+                  onClick={() => setExpandedSections((s) => ({ ...s, audience: !s.audience }))}
                   className="w-full px-6 py-4 flex items-center justify-between hover:bg-dark-hover/50 transition"
                 >
                   <div className="flex items-center gap-3">
@@ -1110,7 +1168,7 @@ export default function QuantumLaunchStudio() {
                     <span className="font-medium text-white">Target Audience</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-zinc-400">{state.audience?.name}</span>
+                    <span className="text-zinc-400">{audience?.name}</span>
                     {expandedSections.audience ? (
                       <ChevronUp className="w-5 h-5 text-zinc-400" />
                     ) : (
@@ -1118,24 +1176,30 @@ export default function QuantumLaunchStudio() {
                     )}
                   </div>
                 </button>
-                
-                {expandedSections.audience && state.audience && (
+
+                {expandedSections.audience && audience && (
                   <div className="px-6 pb-4 space-y-3 text-sm">
-                    <p className="text-zinc-400">{state.audience.description}</p>
+                    <p className="text-zinc-400">{audience.description}</p>
                     <div className="flex flex-wrap gap-2">
                       <span className="px-2 py-1 bg-dark-hover text-zinc-300 rounded text-xs">
-                        Ages {state.audience.age_min}-{state.audience.age_max}
+                        Ages {audience.age_min}-{audience.age_max}
                       </span>
-                      {state.audience.countries.map(c => (
-                        <span key={c} className="px-2 py-1 bg-dark-hover text-zinc-300 rounded text-xs">
+                      {audience.countries.map((c) => (
+                        <span
+                          key={c}
+                          className="px-2 py-1 bg-dark-hover text-zinc-300 rounded text-xs"
+                        >
                           {c}
                         </span>
                       ))}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {state.audience.interests.slice(0, 4).map((i, idx) => (
-                        <span key={idx} className="px-2 py-1 bg-purple-500/10 text-purple-400 rounded text-xs">
-                          {i}
+                      {audience.interests.slice(0, 4).map((interest, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-1 bg-purple-500/10 text-purple-400 rounded text-xs"
+                        >
+                          {interest}
                         </span>
                       ))}
                     </div>
@@ -1150,7 +1214,8 @@ export default function QuantumLaunchStudio() {
                 <div>
                   <h3 className="text-lg font-semibold text-white">Ready to launch?</h3>
                   <p className="text-zinc-400">
-                    {approvedCount} ads approved • ${state.budget?.daily_budget}/day • {state.audience?.countries.join(', ')}
+                    {approvedCount} ads approved • ${budget?.daily_budget}/day •{' '}
+                    {audience?.countries.join(', ')}
                   </p>
                 </div>
                 <button
@@ -1185,35 +1250,37 @@ export default function QuantumLaunchStudio() {
         )}
 
         {/* STEP 4: PUBLISHING */}
-        {state.step === 'publishing' && (
+        {step === 'publishing' && (
           <div className="max-w-lg mx-auto text-center">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-quantum-500/20 mb-6 animate-quantum-pulse">
               <Loader2 className="w-10 h-10 text-quantum-400 animate-spin" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Publishing to Meta</h2>
-            <p className="text-zinc-400">Creating campaign, ad sets, and uploading creatives...</p>
+            <p className="text-zinc-400">
+              Creating campaign, ad sets, and uploading creatives...
+            </p>
           </div>
         )}
 
         {/* STEP 5: LIVE */}
-        {state.step === 'live' && (
+        {step === 'live' && (
           <div className="max-w-2xl mx-auto">
             <div className="text-center mb-8">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-quantum-500/20 mb-6">
                 <CheckCircle className="w-10 h-10 text-quantum-400" />
               </div>
-              <h2 className="text-3xl font-bold text-white mb-2">Campaign is Live! 🚀</h2>
+              <h2 className="text-3xl font-bold text-white mb-2">Campaign is Live!</h2>
               <p className="text-zinc-400">
                 Your ads are now running on Meta. Quantum Sentinel is monitoring 24/7.
               </p>
             </div>
-            
+
             <div className="bg-dark-surface border border-quantum-500/30 rounded-xl p-6 space-y-4">
               <div className="flex items-center justify-between py-2">
                 <span className="text-zinc-400">Campaign Status</span>
                 <span className="flex items-center gap-2 text-quantum-400">
                   <span className="w-2 h-2 bg-quantum-400 rounded-full animate-pulse" />
-                  {state.publishResult?.demo ? 'Demo (Paused)' : 'Active'}
+                  {publishResult?.demo ? 'Demo (Paused)' : 'Active'}
                 </span>
               </div>
               <div className="flex items-center justify-between py-2 border-t border-dark-hover">
@@ -1222,7 +1289,7 @@ export default function QuantumLaunchStudio() {
               </div>
               <div className="flex items-center justify-between py-2 border-t border-dark-hover">
                 <span className="text-zinc-400">Daily Budget</span>
-                <span className="text-white font-medium">${state.budget?.daily_budget}</span>
+                <span className="text-white font-medium">${budget?.daily_budget}</span>
               </div>
               <div className="flex items-center justify-between py-2 border-t border-dark-hover">
                 <span className="text-zinc-400">Quantum Sentinel</span>
@@ -1231,18 +1298,20 @@ export default function QuantumLaunchStudio() {
                   Monitoring
                 </span>
               </div>
-              
-              {state.publishResult?.campaign_id && (
+
+              {publishResult?.campaign_id && (
                 <div className="pt-4 border-t border-dark-hover text-sm">
                   <p className="text-zinc-500 mb-2">Campaign Details:</p>
-                  <p className="font-mono text-zinc-400">Campaign: {state.publishResult.campaign_id}</p>
-                  <p className="font-mono text-zinc-400">Ad: {state.publishResult.ad_id}</p>
+                  <p className="font-mono text-zinc-400">
+                    Campaign: {publishResult.campaign_id}
+                  </p>
+                  <p className="font-mono text-zinc-400">Ad: {publishResult.ad_id}</p>
                 </div>
               )}
-              
-              {state.publishResult?.demo && (
+
+              {publishResult?.demo && (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-400">
-                  📋 Demo mode - Connect Meta API for live publishing
+                  Demo mode - Connect Meta API for live publishing
                 </div>
               )}
             </div>
