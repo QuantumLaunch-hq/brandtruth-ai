@@ -2,42 +2,56 @@ import { defineConfig, devices } from '@playwright/test'
 
 /**
  * Playwright E2E Test Configuration for BrandTruth AI
- * 
- * IMPORTANT: Start dev server first in separate terminal: npm run dev
- * Then run tests: npm run test:e2e
+ *
+ * Run tests against Docker containers:
+ *   docker-compose up -d
+ *   cd frontend && npm run test:e2e
+ *
+ * Or run specific test:
+ *   npm run test:e2e -- --grep "API Health"
  */
 
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
-  timeout: 30000,
-  retries: 0,
-  
+  timeout: 60000,
+  retries: 1,
+
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
   ],
-  
+
   use: {
-    baseURL: 'http://localhost:3001',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3010',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
 
-  // Run only Chromium for faster local testing
-  // Add more browsers for CI
   projects: [
+    // Setup project for authentication
     {
-      name: 'chromium',
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+    },
+
+    // Tests that don't need auth (API health, public pages)
+    {
+      name: 'no-auth',
+      testMatch: /\.(noauth|api)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
-  ],
 
-  // Uncomment to auto-start dev server (slower)
-  // webServer: {
-  //   command: 'npm run dev',
-  //   url: 'http://localhost:3000',
-  //   reuseExistingServer: true,
-  //   timeout: 120000,
-  // },
+    // Tests that need authentication
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: '.playwright/.auth/user.json',
+      },
+      dependencies: ['setup'],
+      testIgnore: /\.(noauth|api)\.spec\.ts/,
+    },
+  ],
 })
