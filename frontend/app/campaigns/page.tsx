@@ -47,46 +47,57 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-// Mock campaigns for demo (will be replaced with real data)
-const mockCampaigns = [
-  {
-    id: '1',
-    name: 'Careerfied Summer Campaign',
-    url: 'https://careerfied.ai',
-    status: 'READY',
-    variantCount: 5,
-    approvedCount: 3,
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '2',
-    name: 'Product Launch Ads',
-    url: 'https://example.com/product',
-    status: 'PROCESSING',
-    variantCount: 0,
-    approvedCount: 0,
-    createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '3',
-    name: 'Holiday Promotion',
-    url: 'https://stripe.com',
-    status: 'PUBLISHED',
-    variantCount: 5,
-    approvedCount: 5,
-    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
+// Campaign type from API
+interface Campaign {
+  id: string;
+  name: string;
+  url: string;
+  status: string;
+  variantCount: number;
+  approvedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workflowId: string | null;
+}
 
 export default function CampaignsPage() {
   const { data: session, status } = useSession();
-  const [campaigns, setCampaigns] = useState(mockCampaigns);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch campaigns from API
+  useEffect(() => {
+    const fetchCampaigns = async () => {
+      if (status !== 'authenticated') {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/campaigns');
+        if (!response.ok) {
+          throw new Error('Failed to fetch campaigns');
+        }
+        const data = await response.json();
+        setCampaigns(data.campaigns || []);
+      } catch (err) {
+        console.error('Failed to fetch campaigns:', err);
+        setError(err instanceof Error ? err.message : 'Failed to fetch campaigns');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCampaigns();
+    // Refresh every 10 seconds to catch processing updates
+    const interval = setInterval(fetchCampaigns, 10000);
+    return () => clearInterval(interval);
+  }, [status]);
 
   // Format relative time
   const formatRelativeTime = (dateString: string) => {
@@ -124,10 +135,32 @@ export default function CampaignsPage() {
     visible: { opacity: 1, y: 0 }
   };
 
-  if (status === 'loading') {
+  if (status === 'loading' || isLoading) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-quantum-500 animate-spin" />
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-quantum-500 animate-spin mx-auto mb-4" />
+          <p className="text-zinc-400 text-sm">Loading campaigns...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <div className="text-center">
+          <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">Failed to load campaigns</h2>
+          <p className="text-zinc-400 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-quantum-500 text-white rounded-lg hover:bg-quantum-600 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -346,13 +379,15 @@ export default function CampaignsPage() {
           </motion.div>
         )}
 
-        {/* Demo notice */}
-        <div className="mt-8 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
-          <p className="text-sm text-zinc-500">
-            <span className="text-quantum-400 font-medium">Demo mode:</span> This is sample data. Connect to your database to see real campaigns.
-            Once you run the pipeline in Studio, campaigns will be automatically saved here.
-          </p>
-        </div>
+        {/* Info notice when no campaigns */}
+        {campaigns.length === 0 && !searchQuery && !filterStatus && (
+          <div className="mt-8 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+            <p className="text-sm text-zinc-500">
+              <span className="text-quantum-400 font-medium">Tip:</span> Create your first campaign from Studio.
+              Campaigns are automatically saved when you run the pipeline.
+            </p>
+          </div>
+        )}
       </main>
     </div>
   );

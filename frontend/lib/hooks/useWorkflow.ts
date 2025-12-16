@@ -19,6 +19,8 @@ export interface WorkflowConfig {
   url: string;
   num_variants?: number;
   platform?: string;
+  user_id?: string;
+  campaign_name?: string;
 }
 
 export interface WorkflowStartResponse {
@@ -166,6 +168,8 @@ export function useWorkflow(): UseWorkflowReturn {
         url: config.url,
         num_variants: config.num_variants || 5,
         platform: config.platform || 'meta',
+        user_id: config.user_id || null,
+        campaign_name: config.campaign_name || null,
       }),
     });
 

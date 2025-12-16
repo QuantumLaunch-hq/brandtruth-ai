@@ -20,3 +20,8 @@ export {
   type PerformanceScore,
   type UseWorkflowReturn,
 } from './useWorkflow';
+
+export {
+  useUser,
+  type User,
+} from './useUser';

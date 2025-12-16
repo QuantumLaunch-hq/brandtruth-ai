@@ -44,7 +44,7 @@ import { ApiStatusBadge } from '@/components/ApiStatusBanner';
 import { DraftIndicator } from '@/components/DraftIndicator';
 import { WorkflowProgress } from '@/components/WorkflowProgress';
 import { QueueStatus } from '@/components/QueueStatus';
-import { useWorkflow, useWorkflowProgress, type WorkflowProgress as WorkflowProgressType } from '@/lib/hooks';
+import { useWorkflow, useWorkflowProgress, useUser, type WorkflowProgress as WorkflowProgressType } from '@/lib/hooks';
 import { usePipelineQueueStore } from '@/stores/pipeline-queue';
 
 // =============================================================================
@@ -501,6 +501,7 @@ export default function QuantumLaunchStudio() {
 
   // Temporal workflow hooks
   const { startWorkflow, getResult, approveVariants: approveWorkflowVariants, checkHealth: checkTemporalHealth, isLoading: workflowLoading } = useWorkflow();
+  const { userId } = useUser();
 
   // Local UI state (not persisted)
   const [step, setStep] = useState<'input' | 'processing' | 'results' | 'publishing' | 'live'>('input');
@@ -679,8 +680,16 @@ export default function QuantumLaunchStudio() {
     draftStore.startProcessing();
 
     try {
+      // Generate campaign name from URL
+      const campaignName = `Campaign for ${new URL(url).hostname}`;
+
       // Always use Temporal workflow - hook handles queueing if unavailable
-      const id = await startWorkflow({ url, num_variants: 5 });
+      const id = await startWorkflow({
+        url,
+        num_variants: 5,
+        user_id: userId || undefined,
+        campaign_name: campaignName,
+      });
 
       if (id) {
         // Check if this is a queue ID (starts with 'queue-')
