@@ -10,11 +10,11 @@
 
 ```
 Phase 1: Foundation     [████░░░░░░] 40%
-Phase 2: Core Pipeline  [████░░░░░░] 40%
+Phase 2: Core Pipeline  [██████░░░░] 60%
 Phase 3: Platform       [░░░░░░░░░░] 0%
 Phase 4: Polish         [░░░░░░░░░░] 0%
 ─────────────────────────────────────
-OVERALL                 [██░░░░░░░░] 20%
+OVERALL                 [███░░░░░░░] 25%
 ```
 
 ## TEST BASELINE (Dec 16, 2025)
@@ -87,8 +87,8 @@ OVERALL                 [██░░░░░░░░] 20%
 - [ ] `test_workflow_persistence.py`
 
 ### 2.3 HITL Dashboard
-- [ ] Connect dashboard to real campaign data
-- [ ] Implement approval/rejection persistence
+- [x] Connect dashboard to real campaign data (Dec 16)
+- [x] Implement approval/rejection persistence (Dec 16)
 - [ ] Add variant editing with save
 - [ ] Download approved ads as ZIP
 
@@ -175,10 +175,20 @@ OVERALL                 [██░░░░░░░░] 20%
 - [x] Updated API routes to accept user_id and campaign_name
 - [x] Rebuilt and restarted Docker containers
 - [x] Verified API health (temporal_available: true)
+- [x] Created frontend API routes for campaigns (/api/campaigns/*)
+- [x] Created /api/user endpoint for database ID lookup
+- [x] Updated campaigns page to fetch from real database
+- [x] Updated Studio page to pass user_id to workflow
+- [x] Created useUser hook for user database ID
+- [x] Rebuilt and verified frontend container
+
+**Commits:**
+- `d81ea0f` - feat: Add database persistence to Temporal workflow
+- `0eaf5fe` - feat: Connect frontend campaigns to real database data
 
 **Blockers:** None
 
-**Next:** Connect frontend campaigns page to real data
+**Next:** Fix broken tests (3 failing + 1 error)
 
 ---
 
