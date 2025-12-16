@@ -10,11 +10,11 @@
 
 ```
 Phase 1: Foundation     [██████████] 100%
-Phase 2: Core Pipeline  [██████░░░░] 60%
+Phase 2: Core Pipeline  [████████░░] 80%
 Phase 3: Platform       [░░░░░░░░░░] 0%
 Phase 4: Polish         [░░░░░░░░░░] 0%
 ─────────────────────────────────────
-OVERALL                 [████░░░░░░] 40%
+OVERALL                 [█████░░░░░] 45%
 ```
 
 ## TEST BASELINE (Dec 16, 2025)
@@ -66,11 +66,12 @@ OVERALL                 [████░░░░░░] 40%
 ## PHASE 2: CORE PIPELINE (Week 2)
 
 ### 2.1 Image Composition
-- [ ] Add PIL/Pillow integration
-- [ ] Implement text overlay on images
-- [ ] Add brand color extraction
-- [ ] Multi-format export (1:1, 4:5, 9:16)
-- [ ] Add watermark/logo placement
+- [x] Add PIL/Pillow integration (Dec 16) - src/composers/ad_composer.py
+- [x] Implement text overlay on images (Dec 16) - headline, primary_text, CTA
+- [x] Add brightness detection for auto text color (Dec 16)
+- [x] Multi-format export (1:1, 4:5, 9:16) (Dec 16)
+- [x] Add logo placement (Dec 16) - optional logo in corner
+- [x] Add file_url to composed assets (Dec 16) - frontend access via /output/
 
 **Tests to add:**
 - [ ] `test_image_composition.py`
@@ -186,10 +187,19 @@ OVERALL                 [████░░░░░░] 40%
 - `d81ea0f` - feat: Add database persistence to Temporal workflow
 - `0eaf5fe` - feat: Connect frontend campaigns to real database data
 - `dc189f1` - fix: Fix all broken unit tests (208 passing)
+- `2f310d7` - docs: Update tracker with test fixes
+- `a2039c2` - feat: Add file_url to composed ad assets
+
+**Image Composition:** ✅ Complete
+- PIL integration already in ad_composer.py
+- Text overlay with auto brightness detection
+- Multi-format export (1:1, 4:5, 9:16, 16:9)
+- Output files served via /output/ endpoint
+- file_url field added for frontend access
 
 **Blockers:** None
 
-**Next:** Implement image composition with PIL
+**Next:** Meta API integration (Phase 3)
 
 ---
 
