@@ -238,8 +238,8 @@ async def stream_workflow_progress(workflow_id: str):
                         }),
                     }
 
-                # Check if complete
-                if progress.stage in ["completed", "failed", "approved"]:
+                # Check if complete or ready for approval
+                if progress.stage in ["completed", "failed", "approved", "awaiting_approval"]:
                     yield {
                         "event": "complete",
                         "data": json.dumps({
