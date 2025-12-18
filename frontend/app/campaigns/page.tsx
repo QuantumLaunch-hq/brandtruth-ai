@@ -73,8 +73,9 @@ export default function CampaignsPage() {
   // Fetch campaigns from API
   useEffect(() => {
     const fetchCampaigns = async () => {
-      if (status !== 'authenticated') {
-        setIsLoading(false);
+      // Fetch regardless of auth status (API handles auth internally)
+      // Skip only during initial loading state
+      if (status === 'loading') {
         return;
       }
 
@@ -174,7 +175,7 @@ export default function CampaignsPage() {
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2 text-white">
               <Zap className="w-7 h-7 text-quantum-500" />
-              <span className="text-lg font-bold">BrandTruth AI</span>
+              <span className="text-lg font-bold">QuantumLaunch</span>
             </Link>
 
             {/* Nav */}

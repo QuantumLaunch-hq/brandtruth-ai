@@ -28,6 +28,17 @@ export function DraftIndicator({
   const hasDraftChanges = hasUnsavedChanges();
   const isSaved = currentCampaign?.isSynced;
   const isProcessing = processingStage !== 'idle' && processingStage !== 'complete' && processingStage !== 'error';
+  const canSaveResult = canSave();
+
+  // Debug logging
+  console.log('[DraftIndicator]', {
+    showSaveButton,
+    canSaveResult,
+    isSaved,
+    processingStage,
+    onSave: !!onSave,
+    shouldShowButton: showSaveButton && canSaveResult && !isSaved && !!onSave
+  });
 
   // Format last updated time
   const formatTime = (dateStr: string | null) => {

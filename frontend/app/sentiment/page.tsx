@@ -149,7 +149,7 @@ export default function SentimentDashboard() {
         <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-lg p-6 mb-8">
           <h2 className="text-lg font-semibold mb-2">🎯 The Feature No One Else Has</h2>
           <p className="text-gray-400">
-            BrandTruth AI monitors your brand sentiment in real-time and automatically pauses your ads 
+            QuantumLaunch monitors your brand sentiment in real-time and automatically pauses your ads 
             during crises. No more running cheerful ads while your brand is trending for the wrong reasons.
           </p>
           <p className="text-purple-400 mt-2 text-sm font-medium">
@@ -449,7 +449,7 @@ export default function SentimentDashboard() {
 
             <div className="mt-8 p-4 bg-gradient-to-r from-purple-900/20 to-pink-900/20 rounded-lg border border-purple-500/30">
               <p className="text-center text-gray-300">
-                <strong>Try the demo scenarios above</strong> to see how BrandTruth AI protects your brand
+                <strong>Try the demo scenarios above</strong> to see how QuantumLaunch protects your brand
                 from advertising during the wrong moments.
               </p>
             </div>

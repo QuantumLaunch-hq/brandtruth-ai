@@ -339,7 +339,7 @@ export default function ToolsPage() {
                 >
                   <Zap className="w-5 h-5 text-quantum-400" />
                 </motion.div>
-                <span className="text-xl font-bold text-white">BrandTruth AI</span>
+                <span className="text-xl font-bold text-white">QuantumLaunch</span>
               </div>
             </div>
 
@@ -498,7 +498,7 @@ export default function ToolsPage() {
       <footer className="border-t border-zinc-800 py-8 mt-16">
         <div className="max-w-7xl mx-auto px-6 text-center">
           <p className="text-sm text-zinc-500">Powered by Quantum Multi-Model Intelligence</p>
-          <p className="text-xs text-zinc-600 mt-1">BrandTruth AI by QuantumLaunch</p>
+          <p className="text-xs text-zinc-600 mt-1">QuantumLaunch - A <a href="https://www.quantumlayerplatform.com/" className="text-quantum-400 hover:text-quantum-300 transition" target="_blank" rel="noopener noreferrer">QuantumLayer Platform</a> company</p>
         </div>
       </footer>
     </div>

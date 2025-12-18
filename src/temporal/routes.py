@@ -26,7 +26,8 @@ from src.temporal.client import (
     start_pipeline,
     get_pipeline_progress,
     get_pipeline_result,
-    approve_variants,
+    get_pipeline_state,
+    # approve_variants,  # Removed - approval now via REST API
     cancel_pipeline,
     is_temporal_available,
 )
@@ -63,9 +64,8 @@ class PipelineProgressResponse(BaseModel):
     error: Optional[str] = None
 
 
-class ApproveVariantsRequest(BaseModel):
-    """Request to approve variants."""
-    variant_ids: list[str]
+# ApproveVariantsRequest removed - approval now via REST API on variants table
+# See: POST /api/variants/{variant_id}/approve
 
 
 # Health Check
@@ -139,17 +139,105 @@ async def get_workflow_progress(workflow_id: str):
     )
 
 
-# Get Result
+# Get Result (current state or completed result)
 @router.get("/result/{workflow_id}")
 async def get_workflow_result(workflow_id: str):
-    """Get the complete result of a finished pipeline workflow."""
+    """Get the result or current state of a pipeline workflow.
+
+    Returns current state for in-progress workflows.
+    Returns full result for completed workflows.
+    Note: Workflow completes after scoring - no approval wait.
+    """
+    # First, try to get current state (doesn't block)
+    state = await get_pipeline_state(workflow_id)
+
+    if state is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workflow {workflow_id} not found",
+        )
+
+    # For in-progress workflows, return current state without blocking
+    in_progress_stages = ["extracting", "generating", "matching", "composing", "scoring",
+                          "embedding_brand", "embedding_variants", "uploading"]
+    if state.get("stage") in in_progress_stages:
+        # Convert dataclass results to dicts if needed
+        result = {
+            "workflow_id": workflow_id,
+            "stage": state.get("stage"),
+            "progress_percent": state.get("progress_percent"),
+            "message": state.get("message"),
+            "error": state.get("error"),
+            "campaign_id": state.get("campaign_id"),
+        }
+
+        # Add brand_profile
+        bp = state.get("brand_profile")
+        if bp:
+            result["brand_profile"] = bp.__dict__ if hasattr(bp, "__dict__") else bp
+
+        # Add copy_variants
+        cv = state.get("copy_variants")
+        if cv:
+            if hasattr(cv, "variants"):
+                result["copy_variants"] = {
+                    "variants": [v.__dict__ if hasattr(v, "__dict__") else v for v in cv.variants],
+                    "generation_time_ms": getattr(cv, "generation_time_ms", 0),
+                }
+            else:
+                result["copy_variants"] = cv
+
+        # Add performance_scores
+        ps = state.get("performance_scores")
+        if ps:
+            if hasattr(ps, "scores"):
+                result["performance_scores"] = {
+                    "scores": [s.__dict__ if hasattr(s, "__dict__") else s for s in ps.scores],
+                }
+            else:
+                result["performance_scores"] = ps
+
+        # Add image_matches
+        im = state.get("image_matches")
+        if im:
+            if hasattr(im, "matches"):
+                result["image_matches"] = {
+                    "matches": [m.__dict__ if hasattr(m, "__dict__") else m for m in im.matches],
+                }
+            else:
+                result["image_matches"] = im
+
+        # Add composed_ads (the actual rendered images)
+        ca = state.get("composed_ads")
+        if ca:
+            if hasattr(ca, "ads"):
+                result["composed_ads"] = {
+                    "ads": [
+                        {
+                            **(a.__dict__ if hasattr(a, "__dict__") else a),
+                            "assets": [
+                                asset.__dict__ if hasattr(asset, "__dict__") else asset
+                                for asset in (a.assets if hasattr(a, "assets") else [])
+                            ]
+                        }
+                        for a in ca.ads
+                    ],
+                }
+            else:
+                result["composed_ads"] = ca
+
+        return result
+
+    # For completed/failed workflows, try to get full result
     result = await get_pipeline_result(workflow_id)
 
     if result is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Workflow {workflow_id} not found or not complete",
-        )
+        # Fall back to state
+        return state
+
+    # Handle both dict (from Temporal serialization) and dataclass results
+    if isinstance(result, dict):
+        return result
 
     # Convert dataclasses to dicts for JSON response
     return {
@@ -177,7 +265,7 @@ async def get_workflow_result(workflow_id: str):
         "performance_scores": {
             "scores": [s.__dict__ for s in result.performance_scores.scores],
         } if result.performance_scores else None,
-        "approved_variant_ids": result.approved_variant_ids,
+        # Note: approved_variant_ids removed - approval is now in database
         "error": result.error,
         "duration_ms": result.duration_ms,
         "campaign_id": result.campaign_id,
@@ -238,8 +326,9 @@ async def stream_workflow_progress(workflow_id: str):
                         }),
                     }
 
-                # Check if complete or ready for approval
-                if progress.stage in ["completed", "failed", "approved", "awaiting_approval"]:
+                # Check if workflow is done (completed or failed)
+                # Note: Workflow no longer waits for approval - it completes after scoring
+                if progress.stage in ["completed", "failed"]:
                     yield {
                         "event": "complete",
                         "data": json.dumps({
@@ -272,26 +361,13 @@ async def stream_workflow_progress(workflow_id: str):
 
 
 # Approve Variants
-@router.post("/approve/{workflow_id}")
-async def approve_workflow_variants(workflow_id: str, request: ApproveVariantsRequest):
-    """Approve specific variants in a workflow.
-
-    This sends a signal to the workflow to approve the specified variants.
-    The workflow will then proceed to completion.
-    """
-    success = await approve_variants(workflow_id, request.variant_ids)
-
-    if not success:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to approve variants for {workflow_id}",
-        )
-
-    return {
-        "workflow_id": workflow_id,
-        "approved_variants": request.variant_ids,
-        "status": "approved",
-    }
+# DEPRECATED: Workflow no longer waits for approval signals
+# Approval is now handled via REST API on the variants table
+# See: POST /api/variants/{variant_id}/approve
+# @router.post("/approve/{workflow_id}")
+# async def approve_workflow_variants(...):
+#     """This endpoint is deprecated. Use /api/variants/{id}/approve instead."""
+#     pass
 
 
 # Cancel Workflow
@@ -310,3 +386,137 @@ async def cancel_workflow(workflow_id: str):
         "workflow_id": workflow_id,
         "status": "cancelled",
     }
+
+
+# =============================================================================
+# PUBLISH WORKFLOW ROUTES
+# =============================================================================
+
+class StartPublishRequest(BaseModel):
+    """Request to start a publish workflow."""
+    campaign_id: str = Field(..., description="Internal campaign ID")
+    campaign_name: str = Field(..., description="Campaign name for Meta")
+    destination_url: str = Field(..., description="Click-through URL")
+    daily_budget: int = Field(3000, ge=100, description="Daily budget in cents")
+    page_id: str = Field("demo_page", description="Facebook page ID")
+    variants: list[dict] = Field(..., description="Variants to publish")
+
+    # Targeting
+    age_min: int = Field(18, ge=13, le=65)
+    age_max: int = Field(65, ge=18, le=65)
+    countries: list[str] = Field(default=["US"])
+
+    # Settings
+    auto_activate: bool = Field(False, description="Start campaign immediately")
+
+
+class StartPublishResponse(BaseModel):
+    """Response from starting a publish workflow."""
+    workflow_id: str
+    status: str
+    message: str
+
+
+@router.post("/publish/start", response_model=StartPublishResponse)
+async def start_publish_workflow(request: StartPublishRequest):
+    """Start a publish workflow to send ads to Meta.
+
+    This workflow:
+    1. Validates Meta credentials
+    2. Uploads images to Meta
+    3. Creates campaign and ad set
+    4. Creates ads for each variant
+    5. Optionally activates the campaign
+    """
+    from src.temporal.client import get_client
+    from src.temporal.workflows.publish_workflow import PublishToMetaWorkflow, PublishConfig
+
+    try:
+        client = await get_client()
+
+        # Generate workflow ID
+        import uuid
+        workflow_id = f"publish-{uuid.uuid4().hex[:8]}"
+
+        # Create config
+        config = PublishConfig(
+            campaign_id=request.campaign_id,
+            campaign_name=request.campaign_name,
+            destination_url=request.destination_url,
+            daily_budget=request.daily_budget,
+            page_id=request.page_id,
+            variants=request.variants,
+            age_min=request.age_min,
+            age_max=request.age_max,
+            countries=request.countries,
+            auto_activate=request.auto_activate,
+        )
+
+        # Start workflow
+        handle = await client.start_workflow(
+            PublishToMetaWorkflow.run,
+            config,
+            id=workflow_id,
+            task_queue="brandtruth-pipeline",
+        )
+
+        logger.info(f"Started publish workflow: {workflow_id}")
+
+        return StartPublishResponse(
+            workflow_id=workflow_id,
+            status="started",
+            message=f"Publish workflow started for {len(request.variants)} variants",
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to start publish workflow: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start publish workflow: {str(e)}",
+        )
+
+
+@router.get("/publish/progress/{workflow_id}")
+async def get_publish_progress(workflow_id: str):
+    """Get progress of a publish workflow."""
+    from src.temporal.client import get_client
+
+    try:
+        client = await get_client()
+        handle = client.get_workflow_handle(workflow_id)
+
+        progress = await handle.query("get_progress")
+        return progress
+
+    except Exception as e:
+        logger.error(f"Failed to get publish progress: {e}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Publish workflow {workflow_id} not found",
+        )
+
+
+@router.get("/publish/result/{workflow_id}")
+async def get_publish_result(workflow_id: str):
+    """Get result of a completed publish workflow."""
+    from src.temporal.client import get_client
+
+    try:
+        client = await get_client()
+        handle = client.get_workflow_handle(workflow_id)
+
+        result = await handle.query("get_result")
+        meta_ids = await handle.query("get_meta_ids")
+
+        return {
+            "workflow_id": workflow_id,
+            "result": result,
+            "meta_ids": meta_ids,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get publish result: {e}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Publish workflow {workflow_id} not found",
+        )

@@ -173,7 +173,7 @@ export default function Onboarding({ onComplete, onSkip }: OnboardingProps) {
             </motion.div>
             
             <h1 className="text-4xl font-bold text-white mb-4">
-              Welcome to BrandTruth Studio
+              Welcome to QuantumLaunch Studio
             </h1>
             <p className="text-xl text-white/60 mb-8">
               I'll extract real claims from your website and create ads that are honest, compliant, and convert.

@@ -16,14 +16,17 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 export type WorkflowStage =
   | 'pending'
   | 'extracting'
+  | 'embedding_brand'
   | 'generating'
+  | 'embedding_variants'
   | 'matching'
   | 'composing'
+  | 'uploading'
   | 'scoring'
-  | 'awaiting_approval'
-  | 'approved'
   | 'completed'
   | 'failed';
+// Note: awaiting_approval and approved removed - approval is now handled
+// via REST API on variants, not workflow stages
 
 export interface WorkflowProgress {
   workflow_id: string;
@@ -226,12 +229,13 @@ export function getStageLabel(stage: WorkflowStage): string {
   const labels: Record<WorkflowStage, string> = {
     pending: 'Starting...',
     extracting: 'Extracting brand',
+    embedding_brand: 'Analyzing brand',
     generating: 'Generating copy',
+    embedding_variants: 'Processing variants',
     matching: 'Matching images',
     composing: 'Composing ads',
+    uploading: 'Uploading assets',
     scoring: 'Scoring performance',
-    awaiting_approval: 'Ready for review',
-    approved: 'Approved',
     completed: 'Complete',
     failed: 'Failed',
   };
@@ -242,5 +246,5 @@ export function getStageLabel(stage: WorkflowStage): string {
  * Helper to check if workflow is in a terminal state
  */
 export function isTerminalStage(stage: WorkflowStage): boolean {
-  return ['completed', 'failed', 'approved'].includes(stage);
+  return ['completed', 'failed'].includes(stage);
 }

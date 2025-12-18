@@ -137,8 +137,53 @@ async def get_pipeline_progress(workflow_id: str) -> Optional[PipelineProgress]:
         return None
 
 
+async def get_pipeline_state(workflow_id: str) -> Optional[dict]:
+    """Get current state of a pipeline workflow by querying (doesn't wait for completion).
+
+    Use this when workflow is in 'awaiting_approval' stage to get variants/ads without blocking.
+
+    Args:
+        workflow_id: Workflow ID to query
+
+    Returns:
+        Dict with current workflow state or None if not found
+    """
+    try:
+        client = await get_client()
+        handle = client.get_workflow_handle(workflow_id)
+
+        # Query all available state
+        progress = await handle.query(AdPipelineWorkflow.get_progress)
+        brand_profile = await handle.query(AdPipelineWorkflow.get_brand_profile)
+        variants = await handle.query(AdPipelineWorkflow.get_variants)
+        scores = await handle.query(AdPipelineWorkflow.get_scores)
+        image_matches = await handle.query(AdPipelineWorkflow.get_image_matches)
+        composed_ads = await handle.query(AdPipelineWorkflow.get_composed_ads)
+        campaign_id = await handle.query(AdPipelineWorkflow.get_campaign_id)
+
+        return {
+            "workflow_id": workflow_id,
+            "stage": progress.stage if progress else "unknown",
+            "progress_percent": progress.progress_percent if progress else 0,
+            "message": progress.message if progress else "",
+            "error": progress.error if progress else None,
+            "brand_profile": brand_profile,
+            "copy_variants": variants,
+            "image_matches": image_matches,
+            "composed_ads": composed_ads,
+            "performance_scores": scores,
+            "campaign_id": campaign_id,
+        }
+    except Exception as e:
+        logger.warning(f"Failed to get state for {workflow_id}: {e}")
+        return None
+
+
 async def get_pipeline_result(workflow_id: str) -> Optional[PipelineResult]:
-    """Get the result of a completed pipeline workflow.
+    """Get the result of a completed pipeline workflow (blocks until complete).
+
+    WARNING: This blocks until workflow finishes. Use get_pipeline_state() for
+    'awaiting_approval' workflows.
 
     Args:
         workflow_id: Workflow ID to get result for

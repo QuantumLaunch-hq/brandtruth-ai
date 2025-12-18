@@ -758,7 +758,7 @@ class MockMetaConnector:
         return f"mock_{self._counter}"
     
     async def validate_credentials(self) -> dict:
-        return {"valid": True, "user": {"id": "mock_user", "name": "Demo User"}}
+        return {"valid": True, "demo_mode": True, "user": {"id": "mock_user", "name": "Demo User"}}
     
     async def get_ad_accounts(self) -> list[dict]:
         return [

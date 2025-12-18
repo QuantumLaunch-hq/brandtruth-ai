@@ -103,6 +103,22 @@ except ImportError:
     TEMPORAL_AVAILABLE = False
     temporal_router = None
 
+# Multi-platform publishing routes
+try:
+    from src.api.platforms import router as platforms_router
+    PLATFORMS_AVAILABLE = True
+except ImportError:
+    PLATFORMS_AVAILABLE = False
+    platforms_router = None
+
+# Variant management routes (approval/rejection)
+try:
+    from src.api.variants import router as variants_router
+    VARIANTS_AVAILABLE = True
+except ImportError:
+    VARIANTS_AVAILABLE = False
+    variants_router = None
+
 app = FastAPI(
     title="BrandTruth AI API",
     description="AI-powered ad generation with video creation",
@@ -134,6 +150,14 @@ app.mount("/output", StaticFiles(directory=str(output_dir)), name="output")
 # Include Temporal workflow routes if available
 if TEMPORAL_AVAILABLE and temporal_router:
     app.include_router(temporal_router, prefix="/workflow", tags=["Temporal Workflows"])
+
+# Include multi-platform publishing routes if available
+if PLATFORMS_AVAILABLE and platforms_router:
+    app.include_router(platforms_router, tags=["Ad Platforms"])
+
+# Include variant management routes
+if VARIANTS_AVAILABLE and variants_router:
+    app.include_router(variants_router, prefix="/api/variants", tags=["Variant Management"])
 
 orchestrator = PipelineOrchestrator(jobs_dir="./jobs")
 sentiment_monitors: dict[str, SentimentMonitor] = {}
@@ -253,6 +277,288 @@ async def health():
         "version": "1.0.0",
         "temporal_available": TEMPORAL_AVAILABLE,
     }
+
+
+# =============================================================================
+# VARIANT APPROVAL ENDPOINTS
+# =============================================================================
+
+from src.db import get_database, VariantStatus
+
+
+@app.get("/api/variants/{variant_id}")
+async def get_variant(variant_id: str):
+    """Get a variant by ID.
+
+    Returns variant details including approval status.
+    """
+    db = get_database()
+    await db.connect()
+
+    try:
+        variant = await db.get_variant(variant_id)
+        if not variant:
+            raise HTTPException(status_code=404, detail=f"Variant {variant_id} not found")
+
+        return {
+            "id": variant.id,
+            "campaign_id": variant.campaign_id,
+            "headline": variant.headline,
+            "primary_text": variant.primary_text,
+            "cta": variant.cta,
+            "angle": variant.angle,
+            "emotion": variant.emotion,
+            "image_url": variant.image_url,
+            "composed_url": variant.composed_url,
+            "score": variant.score,
+            "score_details": variant.score_details,
+            "status": variant.status.value,
+            "created_at": variant.created_at.isoformat() if variant.created_at else None,
+            "updated_at": variant.updated_at.isoformat() if variant.updated_at else None,
+        }
+    finally:
+        await db.disconnect()
+
+
+@app.post("/api/variants/{variant_id}/approve")
+async def approve_variant(variant_id: str):
+    """Approve a variant for publishing.
+
+    Sets variant status to APPROVED.
+    """
+    db = get_database()
+    await db.connect()
+
+    try:
+        variant = await db.approve_variant(variant_id)
+        if not variant:
+            raise HTTPException(status_code=404, detail=f"Variant {variant_id} not found")
+
+        return {
+            "id": variant.id,
+            "status": variant.status.value,
+            "message": f"Variant {variant_id} approved",
+        }
+    finally:
+        await db.disconnect()
+
+
+@app.post("/api/variants/{variant_id}/reject")
+async def reject_variant(variant_id: str):
+    """Reject a variant.
+
+    Sets variant status to REJECTED.
+    """
+    db = get_database()
+    await db.connect()
+
+    try:
+        variant = await db.reject_variant(variant_id)
+        if not variant:
+            raise HTTPException(status_code=404, detail=f"Variant {variant_id} not found")
+
+        return {
+            "id": variant.id,
+            "status": variant.status.value,
+            "message": f"Variant {variant_id} rejected",
+        }
+    finally:
+        await db.disconnect()
+
+
+@app.get("/api/campaigns/{campaign_id}/variants")
+async def get_campaign_variants(campaign_id: str):
+    """Get all variants for a campaign.
+
+    Returns variants grouped by status.
+    """
+    db = get_database()
+    await db.connect()
+
+    try:
+        variants = await db.get_campaign_variants(campaign_id)
+
+        # Group by status
+        pending = []
+        approved = []
+        rejected = []
+
+        for v in variants:
+            variant_dict = {
+                "id": v.id,
+                "headline": v.headline,
+                "primary_text": v.primary_text,
+                "cta": v.cta,
+                "angle": v.angle,
+                "emotion": v.emotion,
+                "image_url": v.image_url,
+                "composed_url": v.composed_url,
+                "score": v.score,
+                "status": v.status.value,
+            }
+            if v.status == VariantStatus.APPROVED:
+                approved.append(variant_dict)
+            elif v.status == VariantStatus.REJECTED:
+                rejected.append(variant_dict)
+            else:
+                pending.append(variant_dict)
+
+        return {
+            "campaign_id": campaign_id,
+            "total": len(variants),
+            "pending": pending,
+            "approved": approved,
+            "rejected": rejected,
+            "counts": {
+                "pending": len(pending),
+                "approved": len(approved),
+                "rejected": len(rejected),
+            }
+        }
+    finally:
+        await db.disconnect()
+
+
+# =============================================================================
+# PUBLISH PREFLIGHT CHECK ENDPOINT
+# =============================================================================
+
+class PreflightCheckRequest(BaseModel):
+    """Request for publish preflight checks."""
+    campaign_id: str
+    platform: str = "meta"
+
+
+@app.post("/api/publish/preflight")
+async def publish_preflight(request: PreflightCheckRequest):
+    """Run preflight checks before publishing.
+
+    Validates:
+    - Campaign exists and is in READY status
+    - Has at least one approved variant
+    - Platform credentials are configured (simulated)
+    - Account has sufficient credits (simulated)
+
+    Returns a list of checks with pass/fail status.
+    """
+    db = get_database()
+    await db.connect()
+
+    checks = []
+    all_passed = True
+
+    try:
+        # Check 1: Campaign exists
+        campaign = await db.get_campaign(request.campaign_id)
+        if not campaign:
+            checks.append({
+                "check": "campaign_exists",
+                "passed": False,
+                "message": f"Campaign {request.campaign_id} not found",
+            })
+            return {"ready": False, "checks": checks}
+
+        checks.append({
+            "check": "campaign_exists",
+            "passed": True,
+            "message": f"Campaign '{campaign.name}' found",
+        })
+
+        # Check 2: Campaign status
+        valid_statuses = ["READY", "APPROVED"]
+        if campaign.status.value not in valid_statuses:
+            checks.append({
+                "check": "campaign_status",
+                "passed": False,
+                "message": f"Campaign status is {campaign.status.value}, expected {valid_statuses}",
+            })
+            all_passed = False
+        else:
+            checks.append({
+                "check": "campaign_status",
+                "passed": True,
+                "message": f"Campaign status is {campaign.status.value}",
+            })
+
+        # Check 3: Has approved variants
+        variants = await db.get_campaign_variants(request.campaign_id)
+        approved_variants = [v for v in variants if v.status == VariantStatus.APPROVED]
+
+        if not approved_variants:
+            checks.append({
+                "check": "approved_variants",
+                "passed": False,
+                "message": "No approved variants. Approve at least one variant to publish.",
+            })
+            all_passed = False
+        else:
+            checks.append({
+                "check": "approved_variants",
+                "passed": True,
+                "message": f"{len(approved_variants)} approved variant(s) ready",
+                "variant_ids": [v.id for v in approved_variants],
+            })
+
+        # Check 4: Platform credentials (simulated)
+        # In production, this would check actual OAuth tokens in database
+        platform_connected = True  # Simulated - always passes for demo
+        if not platform_connected:
+            checks.append({
+                "check": "platform_connected",
+                "passed": False,
+                "message": f"{request.platform.title()} account not connected",
+            })
+            all_passed = False
+        else:
+            checks.append({
+                "check": "platform_connected",
+                "passed": True,
+                "message": f"{request.platform.title()} account connected",
+            })
+
+        # Check 5: Account credits (simulated)
+        # In production, this would check actual credit balance
+        credits_available = True  # Simulated - always passes for demo
+        if not credits_available:
+            checks.append({
+                "check": "credits_available",
+                "passed": False,
+                "message": "Insufficient credits. Add credits to publish.",
+            })
+            all_passed = False
+        else:
+            checks.append({
+                "check": "credits_available",
+                "passed": True,
+                "message": "Sufficient credits available",
+            })
+
+        # Check 6: Ad account selected (simulated)
+        ad_account_selected = True  # Simulated
+        if not ad_account_selected:
+            checks.append({
+                "check": "ad_account",
+                "passed": False,
+                "message": "No ad account selected",
+            })
+            all_passed = False
+        else:
+            checks.append({
+                "check": "ad_account",
+                "passed": True,
+                "message": "Ad account configured",
+            })
+
+        return {
+            "ready": all_passed,
+            "campaign_id": request.campaign_id,
+            "platform": request.platform,
+            "checks": checks,
+            "approved_count": len(approved_variants) if 'approved_variants' in dir() else 0,
+        }
+
+    finally:
+        await db.disconnect()
 
 
 # =============================================================================

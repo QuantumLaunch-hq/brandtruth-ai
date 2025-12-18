@@ -42,7 +42,7 @@ async def extract_brand_activity(url: str) -> BrandProfileResult:
     - Result serialization for checkpointing
 
     Args:
-        url: Website URL to extract brand from
+        url: Website URL to extract brand from (with or without scheme)
 
     Returns:
         BrandProfileResult with extracted brand information
@@ -52,6 +52,10 @@ async def extract_brand_activity(url: str) -> BrandProfileResult:
     """
     import time
     start_time = time.time()
+
+    # Normalize URL - ensure it has a scheme
+    if not url.startswith(('http://', 'https://')):
+        url = f"https://{url}"
 
     activity.logger.info(f"Extracting brand from {url}")
 

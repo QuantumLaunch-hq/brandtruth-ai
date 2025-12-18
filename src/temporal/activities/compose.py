@@ -42,6 +42,7 @@ class ComposedAdResult:
     primary_text: str
     cta: str
     assets: list[AdAsset]
+    destination_url: str = ""  # URL where ad clicks should go (the original site)
 
 
 @dataclass
@@ -55,6 +56,7 @@ class AdCompositionResult:
 async def compose_ads_activity(
     variants: list[CopyVariantResult],
     image_matches: list[ImageMatchResult],
+    destination_url: str,
     output_dir: str = "./output",
     formats: list[str] | None = None,
 ) -> AdCompositionResult:
@@ -68,6 +70,7 @@ async def compose_ads_activity(
     Args:
         variants: Copy variants
         image_matches: Matched images for each variant
+        destination_url: The original site URL (where ad clicks should go)
         output_dir: Directory for generated assets
         formats: Ad formats to generate (default: SQUARE)
 
@@ -198,6 +201,7 @@ async def compose_ads_activity(
                     headline=ad.headline,
                     primary_text=ad.primary_text,
                     cta=ad.cta,
+                    destination_url=destination_url,
                     assets=assets,
                 )
             )

@@ -87,9 +87,11 @@ export interface WorkflowResult {
       headline: string;
       primary_text: string;
       cta: string;
+      destination_url: string;  // URL where ad clicks should go (the original site)
       assets: Array<{
         format: string;
         file_path: string;
+        file_url: string;  // MinIO URL or relative path
         width: number;
         height: number;
       }>;

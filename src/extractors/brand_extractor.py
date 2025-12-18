@@ -151,13 +151,17 @@ class BrandExtractor:
     async def extract(self, url: str) -> BrandProfile:
         """
         Extract brand profile from a website URL.
-        
+
         Args:
-            url: The website URL (e.g., https://careerfied.ai)
-            
+            url: The website URL (e.g., https://careerfied.ai or careerfied.ai)
+
         Returns:
             Complete BrandProfile object
         """
+        # Normalize URL - ensure it has a scheme
+        if not url.startswith(('http://', 'https://')):
+            url = f"https://{url}"
+
         # Step 1: Scrape the website
         print(f"Scraping {url}...")
         pages = await scrape_website(url, max_pages=self.max_pages)

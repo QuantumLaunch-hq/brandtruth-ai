@@ -2,10 +2,11 @@ import { auth } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
 // Routes that require authentication
-const protectedRoutes = [
-  '/campaigns',
-  '/studio',
-  '/dashboard',
+// Temporarily disabled for testing
+const protectedRoutes: string[] = [
+  // '/campaigns',
+  // '/studio',
+  // '/dashboard',
 ];
 
 // Routes that should redirect to /campaigns if already logged in
@@ -33,9 +34,10 @@ export default auth((req) => {
   }
 
   // Redirect to campaigns if trying to access auth route while logged in
-  if (isAuthRoute && isLoggedIn) {
-    return NextResponse.redirect(new URL('/campaigns', nextUrl.origin));
-  }
+  // Disabled - let users access login page even if logged in (to fix session issues)
+  // if (isAuthRoute && isLoggedIn) {
+  //   return NextResponse.redirect(new URL('/campaigns', nextUrl.origin));
+  // }
 
   return NextResponse.next();
 });

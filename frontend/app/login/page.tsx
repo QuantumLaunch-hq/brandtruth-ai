@@ -68,7 +68,7 @@ function LoginContent() {
       <header className="relative z-10 p-6">
         <Link href="/" className="flex items-center gap-2 text-white hover:text-quantum-400 transition-colors w-fit">
           <Zap className="w-8 h-8 text-quantum-500" />
-          <span className="text-xl font-bold">BrandTruth AI</span>
+          <span className="text-xl font-bold">QuantumLaunch</span>
         </Link>
       </header>
 
@@ -93,7 +93,7 @@ function LoginContent() {
                 <Zap className="w-8 h-8 text-white" />
               </motion.div>
               <h1 className="text-2xl font-bold text-white mb-2">Welcome back</h1>
-              <p className="text-zinc-400">Sign in to your BrandTruth AI account</p>
+              <p className="text-zinc-400">Sign in to your QuantumLaunch account</p>
             </div>
 
             {/* Error message */}

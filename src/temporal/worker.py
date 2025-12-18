@@ -46,6 +46,25 @@ from src.temporal.activities.persist import (
     complete_campaign_activity,
     fail_campaign_activity,
 )
+from src.temporal.activities.upload import (
+    upload_composed_ad_activity,
+    upload_batch_activity,
+)
+from src.temporal.activities.embed import (
+    embed_brand_activity,
+    embed_variants_activity,
+    find_similar_brands_activity,
+    find_similar_ads_activity,
+)
+from src.temporal.activities.publish import (
+    upload_image_to_meta_activity,
+    create_meta_campaign_activity,
+    create_meta_adset_activity,
+    create_meta_ad_activity,
+    activate_campaign_activity,
+    validate_meta_credentials_activity,
+)
+from src.temporal.workflows.publish_workflow import PublishToMetaWorkflow
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -72,7 +91,7 @@ async def run_worker():
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
-        workflows=[AdPipelineWorkflow],
+        workflows=[AdPipelineWorkflow, PublishToMetaWorkflow],
         activities=[
             # Pipeline activities
             extract_brand_activity,
@@ -87,14 +106,32 @@ async def run_worker():
             save_variants_activity,
             complete_campaign_activity,
             fail_campaign_activity,
+            # Storage activities (MinIO)
+            upload_composed_ad_activity,
+            upload_batch_activity,
+            # Vector embedding activities (Qdrant)
+            embed_brand_activity,
+            embed_variants_activity,
+            find_similar_brands_activity,
+            find_similar_ads_activity,
+            # Meta publishing activities
+            upload_image_to_meta_activity,
+            create_meta_campaign_activity,
+            create_meta_adset_activity,
+            create_meta_ad_activity,
+            activate_campaign_activity,
+            validate_meta_credentials_activity,
         ],
         # Use thread pool for blocking activities
         activity_executor=ThreadPoolExecutor(max_workers=10),
+        # Enterprise tuning
+        max_concurrent_activities=50,
+        max_concurrent_workflow_tasks=100,
     )
 
     logger.info(f"Starting worker on task queue: {TASK_QUEUE}")
-    logger.info("Registered workflows: AdPipelineWorkflow")
-    logger.info("Registered activities: extract, generate, match, compose, score, persist")
+    logger.info("Registered workflows: AdPipelineWorkflow, PublishToMetaWorkflow")
+    logger.info("Registered activities: extract, generate, match, compose, score, persist, upload, embed, publish")
 
     # Handle shutdown gracefully
     shutdown_event = asyncio.Event()

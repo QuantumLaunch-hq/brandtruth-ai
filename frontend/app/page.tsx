@@ -182,7 +182,7 @@ export default function HomePage() {
               >
                 <Zap className="w-5 h-5 text-quantum-400" />
               </motion.div>
-              <span className="text-xl font-bold text-white">BrandTruth AI</span>
+              <span className="text-xl font-bold text-white">QuantumLaunch</span>
             </div>
 
             <nav className="hidden md:flex items-center gap-8">
@@ -198,7 +198,7 @@ export default function HomePage() {
             </nav>
 
             <div className="flex items-center gap-4">
-              <button className="hidden md:block text-sm text-zinc-400 hover:text-white transition">Sign In</button>
+              <Link href="/login" className="hidden md:block text-sm text-zinc-400 hover:text-white transition">Sign In</Link>
               <Link href="/studio">
                 <motion.button
                   className="px-4 py-2 bg-quantum-500 hover:bg-quantum-600 text-black font-medium rounded-lg transition"
@@ -514,7 +514,7 @@ export default function HomePage() {
                   }}
                   transition={{ duration: 2, repeat: Infinity }}
                 >
-                  <span className="text-quantum-400 font-medium">BrandTruth AI</span>
+                  <span className="text-quantum-400 font-medium">QuantumLaunch</span>
                   <span className="text-quantum-400">End-to-end automation</span>
                 </motion.div>
               </div>
@@ -556,9 +556,9 @@ export default function HomePage() {
                 <div className="w-8 h-8 rounded-lg bg-quantum-500/20 flex items-center justify-center">
                   <Zap className="w-4 h-4 text-quantum-400" />
                 </div>
-                <span className="font-bold text-white">BrandTruth AI</span>
+                <span className="font-bold text-white">QuantumLaunch</span>
               </div>
-              <p className="text-sm text-zinc-500">Part of the QuantumLaunch family.</p>
+              <p className="text-sm text-zinc-500">A <a href="https://www.quantumlayerplatform.com/" className="text-quantum-400 hover:text-quantum-300 transition" target="_blank" rel="noopener noreferrer">QuantumLayer Platform</a> company.</p>
             </div>
 
             <div>
@@ -577,15 +577,15 @@ export default function HomePage() {
             </div>
 
             <div>
-              <h4 className="font-medium text-white mb-4">Quantum Family</h4>
+              <h4 className="font-medium text-white mb-4">QuantumLayer Platform</h4>
               <div className="space-y-2">
-                <a href="#" className="block text-sm text-zinc-400 hover:text-white transition">
+                <a href="https://www.quantumlayerplatform.com/" className="block text-sm text-zinc-400 hover:text-white transition" target="_blank" rel="noopener noreferrer">
                   QuantumLayer Platform
                 </a>
-                <a href="#" className="block text-sm text-zinc-400 hover:text-white transition">
+                <a href="https://www.quantumlayerplatform.com/" className="block text-sm text-zinc-400 hover:text-white transition" target="_blank" rel="noopener noreferrer">
                   QuantumTest
                 </a>
-                <a href="#" className="block text-sm text-zinc-400 hover:text-white transition">
+                <a href="https://www.quantumlayerplatform.com/" className="block text-sm text-zinc-400 hover:text-white transition" target="_blank" rel="noopener noreferrer">
                   QL Resilience Fabric
                 </a>
               </div>
@@ -608,7 +608,7 @@ export default function HomePage() {
           </div>
 
           <div className="mt-12 pt-8 border-t border-zinc-800 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-zinc-500">BrandTruth AI by QuantumLaunch</p>
+            <p className="text-sm text-zinc-500">QuantumLaunch - A <a href="https://www.quantumlayerplatform.com/" className="text-quantum-400 hover:text-quantum-300 transition" target="_blank" rel="noopener noreferrer">QuantumLayer Platform</a> company</p>
             <div className="flex items-center gap-4">
               <a href="#" className="text-sm text-zinc-500 hover:text-white transition">
                 Privacy

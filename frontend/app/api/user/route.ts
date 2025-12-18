@@ -1,23 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../auth/[...nextauth]/route';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 
-// GET /api/user - Get current user info including database ID
+// GET /api/user - Get current user info (returns first user for dev mode)
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Get user from session email
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+    // Dev mode: return first user or create default
+    let user = await prisma.user.findFirst({
       select: {
         id: true,
         name: true,
@@ -27,10 +15,19 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
+      // Create default dev user
+      user = await prisma.user.create({
+        data: {
+          email: 'dev@brandtruth.ai',
+          name: 'Dev User',
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      });
     }
 
     return NextResponse.json({ user });

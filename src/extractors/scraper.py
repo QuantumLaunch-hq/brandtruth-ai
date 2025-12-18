@@ -82,13 +82,17 @@ class WebScraper:
     async def scrape_website(self, url: str) -> list[ScrapedPage]:
         """
         Scrape key pages from a website.
-        
+
         Args:
-            url: The website URL (e.g., https://careerfied.ai)
-            
+            url: The website URL (e.g., https://careerfied.ai or careerfied.ai)
+
         Returns:
             List of ScrapedPage objects
         """
+        # Normalize URL - add https:// if no scheme provided
+        if not url.startswith(('http://', 'https://')):
+            url = f"https://{url}"
+
         parsed = urlparse(url)
         base_url = f"{parsed.scheme}://{parsed.netloc}"
         

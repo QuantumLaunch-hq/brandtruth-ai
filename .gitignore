@@ -46,3 +46,9 @@ brand_profiles/
 # Node (for dashboard later)
 node_modules/
 .next/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl

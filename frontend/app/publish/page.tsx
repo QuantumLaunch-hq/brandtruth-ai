@@ -46,7 +46,7 @@ export default function PublishPage() {
   const [cta, setCta] = useState('Get Started');
   const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?w=600');
   const [linkUrl, setLinkUrl] = useState('https://careerfied.ai');
-  const [campaignName, setCampaignName] = useState('BrandTruth Campaign');
+  const [campaignName, setCampaignName] = useState('QuantumLaunch Campaign');
   const [dailyBudget, setDailyBudget] = useState(10);
   const [startPaused, setStartPaused] = useState(true);
   

@@ -1,23 +1,30 @@
 # src/temporal/workflows/ad_pipeline.py
 """Ad Pipeline Workflow for BrandTruth AI.
 
-This is the main durable workflow that orchestrates the entire ad generation pipeline.
-Unlike the current synchronous orchestrator, this workflow:
+This is the main durable workflow that orchestrates ad generation.
+The workflow is "fire-and-forget" - it completes after scoring and
+does NOT wait for human approval. Approval/rejection is handled
+via REST API (database state), not workflow signals.
 
+Key properties:
 1. Survives crashes - resumes from last successful step
 2. Has automatic retries - each activity retries independently
-3. Supports long waits - can pause for human approval for days
+3. Completes quickly - no waiting for human input
 4. Provides real-time progress - queryable state at any time
 5. Is observable - full history in Temporal UI
 
 Workflow Stages:
 1. extract_brand - Extract brand profile from URL
 2. generate_copy - Generate copy variants
-3. match_images - Match images to variants (parallel)
+3. match_images - Match images to variants
 4. compose_ads - Compose final ad creatives
 5. score_variants - Predict performance scores
-6. wait_for_approval - Wait for human approval (signal)
-7. complete - Workflow complete
+6. complete - Workflow done, results saved to DB
+
+Post-workflow (handled separately):
+- User reviews variants in UI
+- User approves/rejects via REST API (DB update)
+- Publishing to ad platforms is a separate workflow
 """
 
 from dataclasses import dataclass
@@ -44,18 +51,36 @@ with workflow.unsafe.imports_passed_through():
         fail_campaign_activity,
         CampaignRef,
     )
+    # MinIO upload activities
+    from src.temporal.activities.upload import (
+        upload_composed_ad_activity,
+        UploadResult,
+    )
+    # Qdrant embedding activities
+    from src.temporal.activities.embed import (
+        embed_brand_activity,
+        embed_variants_activity,
+        EmbeddingResult,
+    )
+    import json
 
 
 class PipelineStage(str, Enum):
-    """Pipeline execution stages for progress tracking."""
+    """Pipeline execution stages for progress tracking.
+
+    Note: Workflow completes after scoring. Approval/rejection is handled
+    via REST API (database state), not workflow signals. Publishing to
+    ad platforms is a separate workflow triggered after approval.
+    """
     PENDING = "pending"
     EXTRACTING = "extracting"
+    EMBEDDING_BRAND = "embedding_brand"
     GENERATING = "generating"
+    EMBEDDING_VARIANTS = "embedding_variants"
     MATCHING = "matching"
     COMPOSING = "composing"
+    UPLOADING = "uploading"
     SCORING = "scoring"
-    AWAITING_APPROVAL = "awaiting_approval"
-    APPROVED = "approved"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -85,7 +110,11 @@ class PipelineProgress:
 
 @dataclass
 class PipelineResult:
-    """Complete result of the pipeline workflow."""
+    """Complete result of the pipeline workflow.
+
+    Note: This workflow produces variants with scores. Approval status
+    is managed separately in the database, not in this result.
+    """
     workflow_id: str
     config: PipelineConfig
     stage: str
@@ -94,7 +123,6 @@ class PipelineResult:
     image_matches: Optional[ImageMatchingResult] = None
     composed_ads: Optional[AdCompositionResult] = None
     performance_scores: Optional[PerformanceScoringResult] = None
-    approved_variant_ids: list[str] | None = None
     error: Optional[str] = None
     duration_ms: int = 0
     # Database reference (if persistence was enabled)
@@ -162,10 +190,6 @@ class AdPipelineWorkflow:
         self._image_matches: Optional[ImageMatchingResult] = None
         self._composed_ads: Optional[AdCompositionResult] = None
         self._performance_scores: Optional[PerformanceScoringResult] = None
-
-        # Approval state
-        self._approved_variant_ids: list[str] = []
-        self._approval_received = False
 
         # Database persistence
         self._campaign_id: Optional[str] = None
@@ -239,6 +263,31 @@ class AdPipelineWorkflow:
                     retry_policy=DEFAULT_RETRY_POLICY,
                 )
 
+            # Stage 1.5: Embed brand profile to Qdrant (for similarity search)
+            self._update_progress(PipelineStage.EMBEDDING_BRAND, 28, "Embedding brand profile")
+
+            brand_json = json.dumps({
+                "brand_name": self._brand_profile.brand_name,
+                "website_url": self._brand_profile.website_url,
+                "tagline": self._brand_profile.tagline,
+                "industry": self._brand_profile.industry,
+                "value_propositions": self._brand_profile.value_propositions,
+                "tone_markers": self._brand_profile.tone_markers,
+                "confidence_score": self._brand_profile.confidence_score,
+            })
+
+            try:
+                await workflow.execute_activity(
+                    embed_brand_activity,
+                    args=[brand_json, workflow_id],  # brand_profile_json, campaign_id
+                    start_to_close_timeout=timedelta(seconds=60),
+                    retry_policy=DEFAULT_RETRY_POLICY,
+                )
+                workflow.logger.info("Brand profile embedded to Qdrant")
+            except Exception as e:
+                # Non-critical - log and continue
+                workflow.logger.warning(f"Failed to embed brand (continuing): {e}")
+
             # Stage 2: Generate copy (LLM-intensive - multiple variants)
             self._update_progress(
                 PipelineStage.GENERATING, 30,
@@ -256,6 +305,33 @@ class AdPipelineWorkflow:
                 PipelineStage.GENERATING, 45,
                 f"Generated {len(self._copy_variants.variants)} variants"
             )
+
+            # Stage 2.5: Embed copy variants to Qdrant (for similarity search)
+            self._update_progress(PipelineStage.EMBEDDING_VARIANTS, 48, "Embedding copy variants")
+
+            variants_json = json.dumps([
+                {
+                    "id": v.id,
+                    "headline": v.headline,
+                    "primary_text": v.primary_text,
+                    "cta": v.cta,
+                    "angle": v.angle,
+                    "emotion": v.emotion,
+                }
+                for v in self._copy_variants.variants
+            ])
+
+            try:
+                await workflow.execute_activity(
+                    embed_variants_activity,
+                    args=[variants_json, workflow_id],  # variants_json, campaign_id
+                    start_to_close_timeout=timedelta(seconds=120),  # Batch embedding takes longer
+                    retry_policy=DEFAULT_RETRY_POLICY,
+                )
+                workflow.logger.info(f"Embedded {len(self._copy_variants.variants)} variants to Qdrant")
+            except Exception as e:
+                # Non-critical - log and continue
+                workflow.logger.warning(f"Failed to embed variants (continuing): {e}")
 
             # Stage 3: Match images (Unsplash API + optional vision AI)
             self._update_progress(PipelineStage.MATCHING, 50, "Matching images with vision AI")
@@ -280,6 +356,7 @@ class AdPipelineWorkflow:
                 args=[
                     self._copy_variants.variants,
                     self._image_matches.matches,
+                    config.url,  # destination_url - where ad clicks should go
                     config.output_dir,
                     config.formats,
                 ],
@@ -291,6 +368,41 @@ class AdPipelineWorkflow:
                 PipelineStage.COMPOSING, 80,
                 f"Composed {len(self._composed_ads.ads)} ads"
             )
+
+            # Stage 4.5: Upload composed ads to MinIO
+            self._update_progress(PipelineStage.UPLOADING, 82, "Uploading ads to storage")
+
+            upload_count = 0
+            for ad in self._composed_ads.ads:
+                for asset in ad.assets:
+                    if asset.file_path:
+                        try:
+                            # Format name: convert "1:1" to "1x1"
+                            format_name = asset.format.replace(":", "x") if asset.format else "default"
+
+                            upload_result: UploadResult = await workflow.execute_activity(
+                                upload_composed_ad_activity,
+                                args=[
+                                    workflow_id,  # campaign_id
+                                    ad.copy_variant_id,  # variant_id
+                                    asset.file_path,  # local_file_path
+                                    format_name,  # format_name
+                                ],
+                                start_to_close_timeout=timedelta(minutes=2),
+                                heartbeat_timeout=timedelta(seconds=30),
+                                retry_policy=DEFAULT_RETRY_POLICY,
+                            )
+
+                            # Update asset with public MinIO URL (no expiration since bucket is public)
+                            asset.file_url = upload_result.object_url
+                            upload_count += 1
+
+                        except Exception as e:
+                            workflow.logger.warning(f"Failed to upload {asset.file_path}: {e}")
+                            # Keep original local URL as fallback
+
+            workflow.logger.info(f"Uploaded {upload_count} assets to MinIO")
+            self._update_progress(PipelineStage.UPLOADING, 84, f"Uploaded {upload_count} assets")
 
             # Stage 5: Score variants (LLM-based scoring per variant)
             self._update_progress(PipelineStage.SCORING, 85, "Predicting performance")
@@ -322,28 +434,7 @@ class AdPipelineWorkflow:
                     retry_policy=DEFAULT_RETRY_POLICY,
                 )
 
-            # Stage 6: Await approval (optional - can be skipped)
-            self._update_progress(
-                PipelineStage.AWAITING_APPROVAL, 98,
-                "Ready for review - awaiting approval"
-            )
-
-            # Wait up to 7 days for approval signal
-            # In production, you might skip this and let frontend handle approval
-            try:
-                await workflow.wait_condition(
-                    lambda: self._approval_received,
-                    timeout=timedelta(days=7),
-                )
-                self._update_progress(
-                    PipelineStage.APPROVED, 100,
-                    f"Approved {len(self._approved_variant_ids)} variants"
-                )
-            except TimeoutError:
-                # Timeout is fine - auto-complete without explicit approval
-                workflow.logger.info("Approval timeout - completing without explicit approval")
-
-            # Complete
+            # Complete - workflow is done, approval is handled via REST API
             self._stage = PipelineStage.COMPLETED
             self._progress_percent = 100
             self._message = "Pipeline complete"
@@ -369,7 +460,6 @@ class AdPipelineWorkflow:
                 image_matches=self._image_matches,
                 composed_ads=self._composed_ads,
                 performance_scores=self._performance_scores,
-                approved_variant_ids=self._approved_variant_ids or None,
                 duration_ms=duration_ms,
                 campaign_id=self._campaign_id,
             )
@@ -413,19 +503,8 @@ class AdPipelineWorkflow:
         self._message = message
         workflow.logger.info(f"[{stage.value}] {percent}% - {message}")
 
-    @workflow.signal
-    def approve_variants(self, variant_ids: list[str]):
-        """Signal to approve specific variants."""
-        self._approved_variant_ids = variant_ids
-        self._approval_received = True
-        workflow.logger.info(f"Approved variants: {variant_ids}")
-
-    @workflow.signal
-    def reject_all(self):
-        """Signal to reject all variants and cancel workflow."""
-        self._approved_variant_ids = []
-        self._approval_received = True
-        workflow.logger.info("All variants rejected")
+    # Note: Approval signals removed. Approval is now handled via REST API
+    # and database state. See POST /api/variants/{id}/approve
 
     @workflow.query
     def get_progress(self) -> PipelineProgress:
@@ -456,6 +535,16 @@ class AdPipelineWorkflow:
     def get_scores(self) -> Optional[PerformanceScoringResult]:
         """Query performance scores."""
         return self._performance_scores
+
+    @workflow.query
+    def get_image_matches(self) -> Optional[ImageMatchingResult]:
+        """Query matched images."""
+        return self._image_matches
+
+    @workflow.query
+    def get_composed_ads(self) -> Optional[AdCompositionResult]:
+        """Query composed ad creatives."""
+        return self._composed_ads
 
     @workflow.query
     def get_campaign_id(self) -> Optional[str]:

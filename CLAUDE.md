@@ -6,11 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 BrandTruth AI is an AI-native advertising platform that generates complete ad campaigns from a URL. The platform extracts brand information, generates copy variants, matches images, composes ads, and publishes to platforms like Meta.
 
-**Tech Stack:** Python 3.11, FastAPI, Next.js 14, Pydantic, Claude API
+**Tech Stack:** Python 3.11, FastAPI, Next.js 14, Temporal, PostgreSQL, MinIO, Qdrant, Prisma, Claude API
 
 ## Development Commands
 
-### Setup & Run
+### Docker Development (Recommended)
+```bash
+docker-compose up -d              # Start all services (API :8010, Frontend :3010)
+docker-compose up -d --build      # Rebuild and start
+docker-compose logs -f api        # View API logs
+docker-compose logs -f worker     # View Temporal worker logs
+docker-compose down               # Stop all services
+```
+
+Services accessible at:
+- Frontend: http://localhost:3010
+- API: http://localhost:8010/docs
+- Temporal UI: http://localhost:8091
+- MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+- Qdrant: http://localhost:6333/dashboard
+
+### Local Development (without Docker)
 ```bash
 # Install dependencies
 make install                    # Backend (requires venv activated)
@@ -18,7 +34,15 @@ cd frontend && npm install      # Frontend
 
 # Start servers
 make run                        # API server on :8000
-make frontend                   # Frontend on :3000 (run in separate terminal)
+make frontend                   # Frontend on :3000 (separate terminal)
+```
+
+### Database Commands
+```bash
+cd frontend
+npx prisma generate             # Generate Prisma client after schema changes
+npx prisma db push              # Push schema changes to database
+npx prisma studio               # Open Prisma Studio GUI
 ```
 
 ### Testing
@@ -51,57 +75,87 @@ make clean                      # Clean generated files
 
 ## Architecture
 
-The platform follows a pipeline architecture with four layers:
+### System Overview
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Frontend (Next.js 14)         │  Studio (main workflow)               │
+│  ─────────────────────         │  Campaigns, Dashboard, Tools          │
+├─────────────────────────────────────────────────────────────────────────┤
+│  API Server (FastAPI)          │  Temporal Routes (/workflow/*)        │
+│  ─────────────────────         │  Campaign APIs, Variant APIs          │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Temporal Workflows            │  AdPipelineWorkflow, PublishWorkflow  │
+│  ─────────────────────         │  Durable, retryable, queryable        │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Activities (src/temporal/)    │  extract, generate, match, compose,   │
+│                                │  score, upload, embed, publish        │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Storage                                                                │
+│  PostgreSQL (campaigns, variants, users)                                │
+│  MinIO (ad creatives, images)                                           │
+│  Qdrant (brand/variant embeddings)                                      │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-```
-URL Input → Extraction → Generation → Control → Platform
-```
+### Temporal Workflow Pipeline (`src/temporal/`)
+
+The core ad generation is a Temporal workflow that survives crashes and provides real-time progress:
+
+**AdPipelineWorkflow stages** (`workflows/ad_pipeline.py`):
+1. `extract_brand` - Scrape website + Claude extraction → BrandProfile
+2. `embed_brand` - Store brand embedding in Qdrant
+3. `generate_copy` - Claude generates N copy variants
+4. `embed_variants` - Store variant embeddings in Qdrant
+5. `match_images` - Pexels/Unsplash/DALL-E image matching
+6. `compose_ads` - Render ad creatives in multiple formats
+7. `upload` - Upload to MinIO storage
+8. `score_variants` - Claude predicts performance (0-100)
+9. `complete` - Save to PostgreSQL, ready for approval
+
+**Key workflow APIs**:
+- `POST /workflow/start` - Start pipeline, returns workflow_id
+- `GET /workflow/progress/{id}` - Query current stage/percent
+- `GET /workflow/stream/{id}` - SSE stream for real-time updates
+- `GET /workflow/result/{id}` - Get full result when complete
+
+### Database Schema (`frontend/prisma/schema.prisma`)
+
+- **User** - NextAuth.js user with campaigns
+- **Campaign** - URL, status, brandProfile JSON, workflowId reference
+- **Variant** - headline, primaryText, cta, imageUrl, composedUrl, score, status
+
+Campaign statuses: DRAFT → PROCESSING → READY → APPROVED → PUBLISHED
 
 ### Layer Components (`src/`)
 
-**Extractors** - Extract data from external sources
+**Extractors** (`extractors/`)
 - `brand_extractor.py` - Extracts brand profile from website using Claude
 - `sentiment_monitor.py` - Monitors brand sentiment, triggers auto-pause rules
-- `social_proof_collector.py` - Collects testimonials, stats, trust signals
 
-**Generators** - Create content using AI
+**Generators** (`generators/`)
 - `copy_generator.py` - Generates ad copy variants with Claude
-- `video_generator.py` - Creates AI UGC-style video scripts and metadata
-- `hook_generator.py` - Generates attention-grabbing hooks
-- `proof_pack.py` - Generates compliance documentation
+- `video_generator.py` - Creates AI UGC-style video scripts
 
-**Composers** - Combine elements into final outputs
+**Composers** (`composers/`)
 - `ad_composer.py` - Composites text + image into ad creatives
-- `image_matcher_v2.py` - Matches copy to stock images via Unsplash
+- `image_matcher_v2.py` - Matches copy to stock images (Pexels → Unsplash → DALL-E)
 - `format_exporter.py` - Exports ads to 9 platform-specific formats
 
-**Analyzers** - Analyze and predict performance
+**Analyzers** (`analyzers/`)
 - `performance_predictor.py` - Predicts ad performance score 0-100
 - `attention_analyzer.py` - Simulates eye-tracking heatmaps
 - `fatigue_predictor.py` - Predicts creative fatigue timing
-- `competitor_intel.py` - Analyzes competitor ad strategies
-- `landing_page_analyzer.py` - Scores ad-to-landing page match
-- `budget_simulator.py` - Simulates budget scenarios and ROAS
-- `platform_recommender.py` - Recommends ad platforms
-- `ab_test_planner.py` - Plans A/B test sequences
-- `audience_targeting.py` - Suggests audience segments
-- `iteration_assistant.py` - Diagnoses underperforming ads
 
-**Pipeline** - Orchestrates the full flow
-- `orchestrator.py` - Runs extraction → generation → composition pipeline
+**Connectors** (`connectors/`)
+- `meta_connector.py` - Publishes to Meta Ads
+- `google_connector.py`, `linkedin_connector.py`, `tiktok_connector.py` - Multi-platform support
+- `factory.py` - Connector factory pattern for platform selection
 
-**Connectors** - Interface with ad platforms
-- `meta_connector.py` - Publishes to Meta Ads (simulated)
+**Storage** (`storage/`)
+- `minio_client.py` - S3-compatible storage for ad creatives
 
-### Data Flow
-
-1. **Pipeline Orchestrator** receives URL and config
-2. **Brand Extractor** scrapes website, calls Claude to extract BrandProfile
-3. **Copy Generator** uses BrandProfile to generate CopyVariant[]
-4. **Image Matcher** finds matching stock images for each variant
-5. **Ad Composer** renders final ad images in multiple formats
-6. **Sentiment Monitor** checks brand health before publishing
-7. **Meta Connector** publishes approved ads
+**Vector** (`vector/`)
+- Qdrant integration for semantic search over brands/variants
 
 ### Models (`src/models/`)
 
@@ -114,15 +168,29 @@ Core Pydantic models that flow through the pipeline:
 ## API Structure
 
 The FastAPI server (`api_server.py`) exposes endpoints grouped by feature:
-- `/pipeline/*` - Full pipeline orchestration
+- `/workflow/*` - Temporal workflow management (start, progress, stream, result)
+- `/api/campaigns/*` - Campaign CRUD operations
+- `/api/variants/*` - Variant approval/rejection
 - `/predict/*`, `/attention/*`, `/fatigue/*` - Analysis tools
 - `/export/*`, `/video/*`, `/hooks/*` - Generation tools
-- `/intel/*`, `/landing/*`, `/budget/*` - Research tools
-- `/meta/*`, `/sentiment/*` - Publishing and monitoring
 
-All endpoints have `/demo` variants for testing without real data.
+All feature endpoints have `/demo` variants for testing without real data.
 
-Interactive API docs: `http://localhost:8000/docs`
+Interactive API docs: `http://localhost:8010/docs` (Docker) or `http://localhost:8000/docs` (local)
+
+## Frontend Structure
+
+**Main Pages** (`frontend/app/`):
+- `/studio` - Main workflow: enter URL → watch pipeline → approve variants
+- `/campaigns` - Campaign list and management
+- `/campaigns/[id]` - Campaign detail with variant approval
+- `/dashboard` - Overview and quick actions
+- `/tools` - Access to all analysis tools
+- `/publish` - Publish approved campaigns to Meta
+
+**Key Hooks** (`frontend/lib/hooks/`):
+- `useWorkflow.ts` - Start pipeline, manage workflow state
+- `useWorkflowProgress.ts` - SSE subscription for real-time progress
 
 ## Testing Structure
 
@@ -140,8 +208,25 @@ Test markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e
 
 ## Key Patterns
 
+- **Temporal workflows**: Durable, retryable pipelines with queryable progress
 - **Lazy singletons**: Use `get_instance(name, factory)` pattern for expensive objects
 - **Async throughout**: All extractors/generators/analyzers are async
 - **Pydantic models**: Strict typing for all data transfer objects
 - **Demo endpoints**: Every feature has a `/demo` endpoint for testing
 - **Factory functions**: `get_predictor()`, `get_video_generator()`, etc. for DI
+- **SSE streaming**: Real-time progress updates via EventSource
+
+## Environment Variables
+
+Required in `.env`:
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Image sources (fallback chain)
+PEXELS_API_KEY=...
+UNSPLASH_ACCESS_KEY=...
+
+# Azure OpenAI (optional, for DALL-E)
+AZURE_OPENAI_ENDPOINT=...
+AZURE_OPENAI_API_KEY=...
+```

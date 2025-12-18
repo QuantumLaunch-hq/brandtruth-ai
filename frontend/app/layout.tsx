@@ -17,9 +17,9 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'BrandTruth AI - Launch Ads at Quantum Speed',
-  description: 'The First Autonomous Ad Engine. Transform your website into high-performing ads with Quantum Multi-Model Intelligence.',
-  keywords: ['advertising', 'ads', 'marketing', 'automation', 'quantum', 'AI'],
+  title: 'QuantumLaunch - Launch Ads at Quantum Speed',
+  description: 'The First Autonomous Ad Engine. Transform your website into high-performing ads with Quantum Multi-Model Intelligence. A QuantumLayer Platform Company.',
+  keywords: ['advertising', 'ads', 'marketing', 'automation', 'quantum', 'AI', 'QuantumLaunch', 'QuantumLayer'],
 }
 
 export default function RootLayout({
